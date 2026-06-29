@@ -1,0 +1,32 @@
+{
+  "name": "claude-code-feedback",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Comment on your local web app and feed the feedback into your Claude Code session via MCP.",
+  "bin": {
+    "claude-feedback-bridge": "dist/bridge.js"
+  },
+  "scripts": {
+    "build:widget": "esbuild src/widget/widget.ts --bundle --format=iife --outfile=public/widget.js --target=es2020",
+    "build:bridge": "esbuild src/bridge.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/bridge.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "build": "pnpm run build:widget && pnpm run build:bridge",
+    "start": "node dist/bridge.js",
+    "dev": "tsx src/bridge.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@medv/finder": "^4.0.2",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "html2canvas": "^1.4.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

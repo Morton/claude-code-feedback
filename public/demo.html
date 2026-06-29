@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude Code Feedback — demo</title>
+    <style>
+      body { font: 16px/1.5 -apple-system, system-ui, sans-serif; margin: 0; color: #1a1a22; }
+      header { background: #5b50e8; color: #fff; padding: 24px 32px; }
+      main { max-width: 720px; margin: 40px auto; padding: 0 24px; }
+      .card { border: 1px solid #e1e1ea; border-radius: 12px; padding: 24px; margin: 16px 0; }
+      button { font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #d4d4dd; background: #f7f7fb; cursor: pointer; }
+      h1 { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <header><h1>Acme Dashboard</h1><p>A pretend local web app to leave feedback on.</p></header>
+    <main>
+      <div class="card">
+        <h2>Welcome back</h2>
+        <p>This heading is a little too close to the paragraph, maybe?</p>
+        <button id="primary">Primary action</button>
+      </div>
+      <div class="card">
+        <h2>Diagnostics demo</h2>
+        <p>Click to generate a console error + a failed request (captured with feedback).</p>
+        <button id="break">Trigger an error</button>
+      </div>
+    </main>
+    <script>
+      document.getElementById("break").addEventListener("click", () => {
+        console.error("Something went wrong in the dashboard");
+        fetch("/api/does-not-exist").catch(() => {});
+      });
+    </script>
+    <script src="/widget.js"></script>
+  </body>
+</html>
