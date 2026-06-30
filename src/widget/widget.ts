@@ -308,7 +308,7 @@ function openComposer(
   send.addEventListener("click", async () => {
     send.disabled = true;
     send.textContent = "Sending…";
-    const ok = await postFeedback({
+    const id = await postFeedback({
       message: textarea.value.trim(),
       url: window.location.pathname,
       selector: anchor.selector,
@@ -319,8 +319,11 @@ function openComposer(
       diagnostics: { console: [...consoleBuf], network: [...networkBuf] },
     });
     close();
-    if (ok) dropPin(rect);
-    toast(ok ? "Sent to Claude Code" : "Failed to reach the feedback bridge");
+    if (id) {
+      const pin = dropPin(rect);
+      trackStatus(id, pin);
+    }
+    toast(id ? "Sent to Claude Code" : "Failed to reach the feedback bridge");
   });
 }
 
@@ -337,34 +340,94 @@ function btnStyle(bg: string, color: string): Styles {
   };
 }
 
-async function postFeedback(payload: unknown): Promise<boolean> {
+/** POST the feedback; resolves to the new item's id, or null on failure. */
+async function postFeedback(payload: unknown): Promise<string | null> {
   try {
     const res = await fetch(`${BRIDGE_ORIGIN}/feedback`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return res.ok;
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as { id?: string } | null;
+    return data?.id ?? null;
   } catch {
-    return false;
+    return null;
   }
 }
 
-function dropPin(rect: { left: number; top: number }) {
+function dropPin(rect: { left: number; top: number }): HTMLElement {
   const pin = el("div", {
     position: "absolute",
     left: `${rect.left + window.scrollX}px`,
     top: `${rect.top + window.scrollY}px`,
     transform: "translate(-50%, -50%)",
-    width: "16px",
-    height: "16px",
+    width: "18px",
+    height: "18px",
     borderRadius: "50%",
     background: ACCENT,
     border: "2px solid #fff",
     boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontSize: "12px",
+    fontWeight: "700",
     zIndex: "2147483500",
   });
+  pin.title = "Sent to Claude Code";
   document.body.appendChild(pin);
+  return pin;
+}
+
+// --- live pin status: open → in_progress (pulsing) → resolved (✓) -----------
+
+const POLL_MS = 1500;
+const MAX_MISSES = 5; // stop after the item disappears (cleared / unreachable)
+
+function setPinState(pin: HTMLElement, state: "open" | "in_progress" | "resolved") {
+  if (state === "in_progress") {
+    pin.style.background = ACCENT;
+    pin.style.animation = "ccf-pulse 1.3s ease-out infinite";
+    pin.title = "Claude is working on this…";
+    pin.textContent = "";
+  } else if (state === "resolved") {
+    pin.style.background = "#22c55e"; // done
+    pin.style.animation = "";
+    pin.title = "Resolved by Claude Code";
+    pin.textContent = "✓";
+    // Fade out a few seconds after completion so the page isn't littered with pins.
+    setTimeout(() => {
+      pin.style.transition = "opacity 0.6s ease";
+      pin.style.opacity = "0";
+      setTimeout(() => pin.remove(), 700);
+    }, 4000);
+  }
+}
+
+function trackStatus(id: string, pin: HTMLElement) {
+  let misses = 0;
+  const timer = window.setInterval(async () => {
+    let status: string | null = null;
+    try {
+      const res = await fetch(`${BRIDGE_ORIGIN}/feedback/${encodeURIComponent(id)}`);
+      if (res.ok) {
+        status = ((await res.json()) as { status?: string })?.status ?? null;
+        misses = 0;
+      } else {
+        misses += 1;
+      }
+    } catch {
+      misses += 1;
+    }
+    if (status === "in_progress" || status === "resolved") {
+      setPinState(pin, status);
+    }
+    if (status === "resolved" || misses >= MAX_MISSES) {
+      window.clearInterval(timer);
+    }
+  }, POLL_MS);
 }
 
 function toast(text: string) {
@@ -415,7 +478,20 @@ function mountFab() {
   document.body.appendChild(fab);
 }
 
+// Keyframes can't live in inline styles, so inject them once.
+function injectStyles() {
+  const style = el("style");
+  style.textContent =
+    "@keyframes ccf-pulse {" +
+    `0% { box-shadow: 0 0 0 0 rgba(${ACCENT_RGB},0.55); }` +
+    `70% { box-shadow: 0 0 0 12px rgba(${ACCENT_RGB},0); }` +
+    `100% { box-shadow: 0 0 0 0 rgba(${ACCENT_RGB},0); }` +
+    "}";
+  document.head.appendChild(style);
+}
+
 installDiagnostics();
+injectStyles();
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", mountFab);
 } else {

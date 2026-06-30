@@ -25,7 +25,8 @@ export interface FeedbackInput {
 export interface FeedbackItem extends Omit<FeedbackInput, "screenshotDataUrl"> {
   id: string;
   createdAt: string;
-  status: "open" | "resolved";
+  /** open → in_progress (Claude has fetched it) → resolved. */
+  status: "open" | "in_progress" | "resolved";
   /** base64 payload (without the `data:` prefix), or null. */
   screenshotBase64: string | null;
   screenshotMime: string | null;
@@ -61,11 +62,23 @@ export function addFeedback(input: FeedbackInput): FeedbackItem {
 }
 
 export function listFeedback(includeResolved = false): FeedbackItem[] {
-  return includeResolved ? [...items] : items.filter((i) => i.status === "open");
+  // "Pending" is anything not yet resolved — including items in progress, so
+  // unfinished work still surfaces if a session is interrupted mid-edit.
+  return includeResolved ? [...items] : items.filter((i) => i.status !== "resolved");
 }
 
 export function getFeedback(id: string): FeedbackItem | undefined {
   return items.find((i) => i.id === id);
+}
+
+/** Mark that work has started (Claude fetched the item). No-op once resolved. */
+export function markInProgress(id: string): boolean {
+  const item = items.find((i) => i.id === id);
+  if (!item || item.status !== "open") {
+    return false;
+  }
+  item.status = "in_progress";
+  return true;
 }
 
 export function resolveFeedback(id: string): boolean {

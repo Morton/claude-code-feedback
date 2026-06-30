@@ -10,6 +10,7 @@ import {
   type FeedbackItem,
   getFeedback,
   listFeedback,
+  markInProgress,
   resolveFeedback,
 } from "./store.js";
 
@@ -82,6 +83,15 @@ const httpServer = createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname === "/feedback") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(listFeedback().map(summary)));
+    return;
+  }
+
+  // The widget polls this to animate each pin as Claude works through it.
+  if (req.method === "GET" && url.pathname.startsWith("/feedback/")) {
+    const id = decodeURIComponent(url.pathname.slice("/feedback/".length));
+    const item = getFeedback(id);
+    res.writeHead(item ? 200 : 404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(item ? { id: item.id, status: item.status } : { error: "not found" }));
     return;
   }
 
@@ -202,6 +212,8 @@ mcp.registerTool(
     if (!item) {
       return { content: [{ type: "text", text: `No feedback with id ${id}` }] };
     }
+    // Fetching an item means work has started — lets the widget pin start pulsing.
+    markInProgress(id);
     const content: Array<
       | { type: "text"; text: string }
       | { type: "image"; data: string; mimeType: string }
