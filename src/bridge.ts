@@ -69,6 +69,7 @@ const httpServer = createServer(async (req, res) => {
     try {
       const item = addFeedback(JSON.parse(await readBody(req)));
       log(`+ feedback ${item.id} on ${item.url} — "${item.message.slice(0, 60)}"`);
+      pushChannelEvent(item);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ id: item.id }));
     } catch (error) {
@@ -115,7 +116,54 @@ function summary(item: FeedbackItem) {
 // MCP server: how the Claude Code session reads/handles the feedback.
 // ---------------------------------------------------------------------------
 
-const mcp = new McpServer({ name: "claude-code-feedback", version: "0.1.0" });
+// Instructions are injected into Claude's system prompt when this runs as a
+// channel, so it knows what the pushed <channel> events mean and how to act.
+const CHANNEL_INSTRUCTIONS =
+  'In-page feedback the user leaves on their running web app arrives as ' +
+  '<channel source="claude-code-feedback" ...> events, each carrying a feedback `id`. ' +
+  "When one arrives, call get_feedback(id) to see the annotated screenshot, the CSS " +
+  "selector, and recent console/network diagnostics; make the change in the codebase; " +
+  "then call resolve_feedback(id). These are one-way — no chat reply is expected.";
+
+const mcp = new McpServer(
+  { name: "claude-code-feedback", version: "0.1.0" },
+  {
+    // Declaring the channel capability lets Claude Code PUSH feedback into a
+    // running session (started with `--channels`) instead of the session having
+    // to poll the tools. Harmless otherwise: if the session isn't a channel,
+    // Claude Code drops these notifications silently.
+    capabilities: { experimental: { "claude/channel": {} } },
+    instructions: CHANNEL_INSTRUCTIONS,
+  }
+);
+
+// Push a freshly-received feedback item into the session as a channel event.
+// The body just nudges Claude with the id; it then pulls the full item (incl.
+// the screenshot image) via get_feedback, reusing the same tools as pull mode.
+function pushChannelEvent(item: FeedbackItem): void {
+  const where = item.selector ? ` at \`${item.selector}\`` : "";
+  const notification = {
+    method: "notifications/claude/channel",
+    params: {
+      content:
+        `New web feedback (id ${item.id}) on ${item.url}${where}: "${item.message}". ` +
+        `Call get_feedback("${item.id}") to see the screenshot and diagnostics, apply ` +
+        `the change, then resolve_feedback("${item.id}").`,
+      // Each key becomes a <channel> tag attribute (identifiers only).
+      meta: {
+        id: item.id,
+        url: item.url,
+        selector: item.selector,
+        element_tag: item.elementTag,
+        has_screenshot: String(item.screenshotBase64 !== null),
+      },
+    },
+  };
+  // The method is a Claude Code extension, outside the SDK's typed union.
+  mcp.server
+    .notification(notification as Parameters<typeof mcp.server.notification>[0])
+    .catch((error) => log("channel notify failed:", error));
+}
 
 mcp.registerTool(
   "list_feedback",

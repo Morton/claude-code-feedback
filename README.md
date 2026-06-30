@@ -56,6 +56,33 @@ Claude Code spawns it; it also opens `http://localhost:7878` for the widget. (Ov
 
 Claude calls `list_feedback` / `get_feedback` (it can *see* each screenshot), makes the changes, and calls `resolve_feedback`. For a hands-off loop, run it under `/loop` so it applies comments as they arrive.
 
+## Push vs. pull
+
+By default the loop above is **pull**: Claude polls `list_feedback` (under `/loop`) or
+you ask it to. The bridge is also a Claude Code **[channel](https://code.claude.com/docs/en/channels)**,
+so it can **push** instead — the moment you hit *Send* in the widget, the item is
+injected into your running session and Claude acts on it, no polling.
+
+Start the session with the channel enabled (the server name matches the key in your
+`.mcp.json`):
+
+```bash
+# Channels are a research preview; a custom one isn't on the allowlist yet, so:
+claude --dangerously-load-development-channels server:web-feedback
+
+# Fully hands-off (Claude edits files without per-action prompts) — trusted dirs only:
+claude --dangerously-load-development-channels server:web-feedback --dangerously-skip-permissions
+```
+
+Each new comment arrives as `<channel source="claude-code-feedback" id="…" selector="…">`
+with a nudge to call `get_feedback(id)` (which returns the screenshot), apply it, and
+`resolve_feedback(id)`. The push is harmless when you *don't* launch with `--channels`:
+Claude Code just drops the notification, and pull mode still works.
+
+> Channels require Claude Code **v2.1.80+** and Anthropic auth (claude.ai or a Console
+> API key; not Bedrock/Vertex/Foundry). On Team/Enterprise an admin must enable them.
+> Syntax may change while it's in research preview.
+
 ## MCP tools
 
 | Tool | Purpose |
