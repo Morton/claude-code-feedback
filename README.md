@@ -65,11 +65,44 @@ Claude calls `list_feedback` / `get_feedback` (it can *see* each screenshot), ma
 | `resolve_feedback(id)` | Mark handled (drops from the list) |
 | `clear_feedback` | Discard everything |
 
-## Verifying the loop
+## Local development & testing
 
 ```bash
-node test/loop.mjs   # spawns the bridge over MCP, posts feedback, reads it back via the tools
+pnpm install
+pnpm run build        # builds public/widget.js + dist/bridge.js
 ```
+
+**Quick, non-interactive check** — no browser, no Claude session:
+
+```bash
+node test/loop.mjs    # spawns the bridge over MCP, posts feedback, reads it back via the tools
+```
+
+**Full end-to-end test** against the bundled [`example/`](example/) app ("Orbit", a
+fake dashboard with deliberate UI issues to comment on):
+
+1. **Register the bridge** in `.mcp.json` (see [Quick start](#quick-start)) using an
+   absolute path to `dist/bridge.js`.
+2. **Terminal A — start Claude in this repo:** `claude`. It spawns the bridge as a
+   stdio MCP server, which opens the HTTP intake on `:7878`. Run `/mcp` and confirm
+   `web-feedback` is **connected** with the four tools. (If you just edited
+   `.mcp.json`, restart `claude` so it re-spawns.)
+3. **Terminal B — serve the example:** `pnpm run example` → <http://localhost:3000>.
+   The static server auto-injects `<script src="http://localhost:7878/widget.js">`,
+   so the widget loads cross-origin from the bridge.
+4. **Leave feedback:** open the page, click 💬, box one of the planted issues, Send.
+5. **Back in Terminal A:** *"Check my web feedback and apply it."* — or run it under
+   `/loop` to apply comments as they arrive.
+
+**Gotchas**
+
+- Start the **bridge (via Claude) before** the example, or `widget.js` 404s.
+- The feedback queue is **in-memory in the bridge process**. Run only **one `claude`
+  session per project** for a given port — a second one spawns a second bridge that
+  can't bind `:7878`; it stays connected over MCP but won't receive widget posts
+  (it logs a warning). Use `CLAUDE_FEEDBACK_PORT` to run more than one on distinct ports.
+- `.mcp.json` holds a machine-specific absolute path, so it's gitignored — create your
+  own locally.
 
 ## Status & roadmap
 
