@@ -193,6 +193,21 @@ mcp.registerTool(
 );
 
 async function main() {
+  // A port collision must not take down the MCP connection (Claude Code would
+  // just show the server stuck "connecting" and re-spawn into the same crash).
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      log(
+        `Port ${PORT} is already in use — another claude-feedback bridge is probably ` +
+          `running (e.g. a second Claude Code session in this project). MCP tools stay ` +
+          `available, but this instance will NOT receive widget feedback: the widget ` +
+          `posts to whichever bridge owns the port. Close the other session, or set ` +
+          `CLAUDE_FEEDBACK_PORT to a different port.`
+      );
+    } else {
+      log("HTTP server error:", err);
+    }
+  });
   httpServer.listen(PORT, () => {
     log(`HTTP intake on http://localhost:${PORT}  (widget.js, /feedback, demo.html)`);
   });

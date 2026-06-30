@@ -45,6 +45,11 @@ Claude Code spawns it; it also opens `http://localhost:7878` for the widget. (Ov
 
 (Or just open the bundled demo at `http://localhost:7878/demo.html`.)
 
+> **Want a realistic test bed?** `pnpm run example` serves a small fake dashboard
+> ("Orbit") on `http://localhost:3000` with deliberate UI issues to comment on —
+> it pulls the widget in cross-origin, exactly like a real dev site would. See
+> [`example/`](example/).
+
 **3. Use it.** Run `claude` in your project + your dev server. Leave comments on the page, then in the CLI:
 
 > "Check my web feedback and apply it."

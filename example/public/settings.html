@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbit — Settings</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">🛰 Orbit</div>
+      <nav>
+        <a href="/">Dashboard</a>
+        <a href="/settings.html" class="active">Settings</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Settings</h1>
+        <p class="subtitle">Manage your account and notifications.</p>
+      </section>
+
+      <section class="card">
+        <h2>Profile</h2>
+        <form id="profile" class="form">
+          <label>
+            Display name
+            <input type="text" name="name" value="Sam Rivera" />
+          </label>
+          <!-- Intentional issue: input is much wider than the others, ragged form -->
+          <label>
+            Email
+            <input type="email" name="email" value="sam@example.com" class="too-wide" />
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="notify" checked />
+            Email me about product updates
+          </label>
+          <!-- Intentional issue: Save and Cancel have no spacing between them -->
+          <div class="actions">
+            <button type="submit" class="btn-primary">Save</button>
+            <button type="button" class="btn-secondary">Cancel</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

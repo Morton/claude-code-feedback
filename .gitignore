@@ -3,3 +3,6 @@ dist/
 public/widget.js
 *.log
 .DS_Store
+
+# Local MCP registration — contains a machine-specific absolute path.
+.mcp.json

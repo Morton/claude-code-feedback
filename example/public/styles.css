@@ -1,0 +1,200 @@
+:root {
+  --accent: #2f6fed;
+  --ink: #1a1d29;
+  --muted: #6b7280;
+  --line: #e4e6ef;
+  --bg: #f6f7fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 16px/1.5 -apple-system, system-ui, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  margin-left: 20px;
+  font-weight: 500;
+}
+
+nav a.active {
+  color: var(--accent);
+}
+
+main {
+  max-width: 860px;
+  margin: 32px auto;
+  padding: 0 24px;
+}
+
+.hero h1 {
+  margin: 0 0 4px;
+}
+
+/* Intentional issue: subtitle contrast is far too low to read comfortably. */
+.subtitle {
+  color: #c7cad6;
+  margin-top: 0;
+}
+
+.stats {
+  display: flex;
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.stat-card {
+  flex: 1;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  /* Intentional issue: fixed narrow width clips the largest number. */
+  max-width: 150px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 24px;
+  margin: 16px 0;
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.activity {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.activity li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.activity li:last-child {
+  border-bottom: none;
+}
+
+.dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.dot.ok {
+  background: #22c55e;
+}
+
+.dot.warn {
+  background: #f59e0b;
+}
+
+code {
+  background: #eef0f7;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.btn-primary,
+.btn-secondary {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 9px 16px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+/* --- form (settings) --- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 360px;
+}
+
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.form input[type="text"],
+.form input[type="email"] {
+  font: inherit;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* Intentional issue: breaks the form's alignment by overflowing the column. */
+.form input.too-wide {
+  width: 560px;
+  max-width: none;
+}
+
+.form .checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+
+/* Intentional issue: buttons sit flush against each other with no gap. */
+.actions {
+  display: flex;
+}

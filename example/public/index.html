@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orbit — Team dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">🛰 Orbit</div>
+      <nav>
+        <a href="/" class="active">Dashboard</a>
+        <a href="/settings.html">Settings</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <h1>Welcome back, Martin</h1>
+        <!-- Intentional issue: low-contrast subtitle, hard to read -->
+        <p class="subtitle">Here's whats happening with your team today.</p>
+      </section>
+
+      <section class="stats">
+        <div class="stat-card">
+          <div class="stat-value">1,284</div>
+          <div class="stat-label">Active users</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">97.3%</div>
+          <div class="stat-label">Uptime</div>
+        </div>
+        <!-- Intentional issue: this card's number overflows its container -->
+        <div class="stat-card">
+          <div class="stat-value">12,847,000</div>
+          <div class="stat-label">Requests this month</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Recent activity</h2>
+        <ul class="activity">
+          <li><span class="dot ok"></span> Deploy succeeded — <code>api</code></li>
+          <li><span class="dot warn"></span> High latency on <code>checkout</code></li>
+          <li><span class="dot ok"></span> 3 new members joined</li>
+        </ul>
+        <!-- Intentional issue: primary action is misaligned and crammed against text -->
+        <button id="refresh" class="btn-primary">Refresh data</button>
+        <button id="break" class="btn-secondary">Simulate error</button>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
