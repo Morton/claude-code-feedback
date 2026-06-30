@@ -10,8 +10,25 @@ import { finder } from "@medv/finder";
 import html2canvas from "html2canvas";
 
 const UI_ATTR = "data-feedback-ui";
-const ACCENT = "#5b50e8";
+// Claude brand palette.
+const ACCENT = "#D97757"; // Claude coral
+const ACCENT_RGB = "217,119,87";
+const SURFACE = "#FAF9F5"; // Claude cream
 const MIN_SIZE = 8;
+
+// The Claude/Anthropic starburst mark, rendered inline so it stays crisp at any
+// size and inherits its color from `stroke` (pass the brand color or a contrast).
+function claudeMark(size: number, color: string): string {
+  return (
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" ` +
+    `stroke="${color}" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">` +
+    `<line x1="12" y1="2.5" x2="12" y2="21.5"/>` +
+    `<line x1="2.5" y1="12" x2="21.5" y2="12"/>` +
+    `<line x1="5.3" y1="5.3" x2="18.7" y2="18.7"/>` +
+    `<line x1="18.7" y1="5.3" x2="5.3" y2="18.7"/>` +
+    `</svg>`
+  );
+}
 
 // The bridge that served this script is where we post feedback.
 const BRIDGE_ORIGIN = (() => {
@@ -161,12 +178,12 @@ function startDrawing() {
     inset: "0",
     zIndex: "2147483600",
     cursor: "crosshair",
-    background: "rgba(91,80,232,0.08)",
+    background: `rgba(${ACCENT_RGB},0.08)`,
   });
   const box = el("div", {
     position: "fixed",
     border: `2px solid ${ACCENT}`,
-    background: "rgba(91,80,232,0.12)",
+    background: `rgba(${ACCENT_RGB},0.12)`,
     pointerEvents: "none",
     display: "none",
   });
@@ -236,7 +253,7 @@ function openComposer(
     top: `${Math.min(rect.top + rect.height + 8, window.innerHeight - 180)}px`,
     zIndex: "2147483601",
     width: "300px",
-    background: "#fff",
+    background: SURFACE,
     border: "1px solid #e1e1ea",
     borderRadius: "10px",
     boxShadow: "0 8px 28px rgba(0,0,0,0.18)",
@@ -244,6 +261,22 @@ function openComposer(
     font: "13px -apple-system, system-ui, sans-serif",
     color: "#1a1a22",
   });
+
+  const header = el("div", {
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    marginBottom: "10px",
+    fontWeight: "700",
+    color: ACCENT,
+  });
+  const mark = el("span", {
+    display: "inline-flex",
+    width: "15px",
+    height: "15px",
+  });
+  mark.innerHTML = claudeMark(15, ACCENT);
+  header.append(mark, el("span", {}, "Claude Code feedback"));
 
   const textarea = el("textarea", {
     width: "100%",
@@ -266,7 +299,7 @@ function openComposer(
   const cancel = el("button", btnStyle("#f0f0f4", "#333"), "Cancel");
   const send = el("button", btnStyle(ACCENT, "#fff"), "Send");
   row.append(cancel, send);
-  panel.append(textarea, row);
+  panel.append(header, textarea, row);
   document.body.appendChild(panel);
   textarea.focus();
 
@@ -287,7 +320,7 @@ function openComposer(
     });
     close();
     if (ok) dropPin(rect);
-    toast(ok ? "Feedback sent to Claude Code" : "Failed to reach the feedback bridge");
+    toast(ok ? "Sent to Claude Code" : "Failed to reach the feedback bridge");
   });
 }
 
@@ -370,11 +403,13 @@ function mountFab() {
       color: "#fff",
       border: "none",
       cursor: "pointer",
-      fontSize: "22px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
       boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
-    },
-    "💬"
+    }
   );
+  fab.innerHTML = claudeMark(26, "#fff");
   fab.title = "Leave feedback for Claude Code";
   fab.addEventListener("click", startDrawing);
   document.body.appendChild(fab);
