@@ -28,7 +28,7 @@
   },
   "scripts": {
     "build:widget": "esbuild src/widget/widget.ts --bundle --format=iife --outfile=public/widget.js --target=es2020",
-    "build:bridge": "esbuild src/bridge.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/bridge.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "build:bridge": "esbuild src/bridge.ts --bundle --platform=node --format=esm --outfile=dist/bridge.js --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
     "build": "pnpm run build:widget && pnpm run build:bridge",
     "build:plugin": "pnpm run build && rm -rf plugin/dist plugin/public && mkdir -p plugin/dist plugin/public && cp dist/bridge.js plugin/dist/bridge.js && cp public/widget.js public/demo.html plugin/public/",
     "start": "node dist/bridge.js",
