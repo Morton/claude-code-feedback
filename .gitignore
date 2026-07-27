@@ -5,4 +5,11 @@ public/widget.js
 .DS_Store
 
 # Local MCP registration — contains a machine-specific absolute path.
-.mcp.json
+# (Anchored to the repo root so the plugin's own .mcp.json is still tracked.)
+/.mcp.json
+
+# The plugin ships prebuilt artifacts — they must be committed so marketplace
+# installs are self-contained (re-included from the broad dist/ + widget rules).
+!plugin/dist/
+!plugin/dist/bridge.js
+!plugin/public/widget.js

@@ -15,7 +15,30 @@ Draw a box on the page, type a note — the widget captures a **screenshot**, th
 
 The capture half is framework-agnostic (vanilla TS + `html2canvas` + `@medv/finder`); the bridge is a single Node process that is **both** an HTTP intake for the widget **and** an MCP stdio server for Claude Code.
 
-## Quick start
+## Install as a plugin (recommended)
+
+The fastest way to use this in any project — no clone, no build, no path editing:
+
+```
+/plugin marketplace add Morton/claude-code-feedback
+/plugin install web-feedback@claude-code-feedback
+```
+
+That bundles the bridge (MCP server + widget host) and a **`/web-feedback:feedback`**
+skill. Then inject the widget on your running dev site — drag this **bookmarklet** to
+your bookmarks bar and click it on any `localhost` page (zero project changes):
+
+```
+javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
+```
+
+Leave a comment on the page, then run `/web-feedback:feedback` (or just say *"check my
+web feedback and apply it"*). See [`plugin/`](plugin/) for details, push mode, and the
+`--channels` flag.
+
+## Quick start (from source)
+
+Prefer to run it straight from this repo instead of the plugin:
 
 ```bash
 pnpm install
@@ -133,9 +156,10 @@ fake dashboard with deliberate UI issues to comment on):
 
 ## Status & roadmap
 
-Prototype — proves the end-to-end loop. Natural next steps:
+Prototype — proves the end-to-end loop. Packaged as a **Claude Code plugin** (bundled
+MCP server + `/feedback` skill, see [`plugin/`](plugin/)). Natural next steps:
 
-- **Browser extension** so it injects on any `localhost` site with zero project changes (vs. the `<script>` tag).
+- **Browser extension** so it injects on any `localhost` site with zero project changes (vs. the `<script>` tag / bookmarklet).
 - **Element → source mapping**: capture the source `file:line` for the marked element (React JSX-source / Vite plugin) so Claude jumps straight to the component.
 - **Persistence** of the queue + screenshots to disk (currently in-memory per bridge process).
-- Package as a **Claude Code plugin** (bundled MCP server + a `/feedback` skill) for one-step install across projects.
+- Get the channel onto the official allowlist so **push mode** drops the `--dangerously-load-development-channels` flag.

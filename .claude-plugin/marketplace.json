@@ -1,0 +1,14 @@
+{
+  "name": "claude-code-feedback",
+  "description": "In-page visual feedback for local web apps, wired into Claude Code over MCP.",
+  "owner": {
+    "name": "Martin Heller"
+  },
+  "plugins": [
+    {
+      "name": "web-feedback",
+      "source": "./plugin",
+      "description": "Comment on your local web app and feed that feedback into Claude Code over MCP."
+    }
+  ]
+}
