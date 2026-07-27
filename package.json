@@ -1,6 +1,6 @@
 {
   "name": "claude-code-feedback",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Comment on your local web app and feed the feedback into your Claude Code session via MCP.",
