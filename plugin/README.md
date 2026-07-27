@@ -18,15 +18,23 @@ feedback. (Override the port with `CLAUDE_FEEDBACK_PORT`.)
 
 ## Inject the widget
 
-The widget has to load on your running dev site. The zero-project-change way is a
-**bookmarklet** — drag it to your bookmarks bar once, then click it on any `localhost`
-page to inject the widget:
+The widget has to load on your running dev site. The easiest way is to let Claude
+wire it in — run the bundled skill:
+
+```
+/web-feedback:inject
+```
+
+Claude locates your app's entry template and adds a dev-only `<script>` tag (and
+removes it on request). If you'd rather not touch your source, use the
+**bookmarklet** instead — drag it to your bookmarks bar once, then click it on any
+`localhost` page:
 
 ```
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
 ```
 
-Or add the tag to your dev HTML directly (dev-only):
+Either way, the tag it adds is just:
 
 ```html
 <script src="http://localhost:7878/widget.js"></script>
@@ -62,7 +70,8 @@ claude --dangerously-load-development-channels plugin:web-feedback@claude-code-f
 plugin/
 ├── .claude-plugin/plugin.json   # manifest
 ├── .mcp.json                    # runs dist/bridge.js via ${CLAUDE_PLUGIN_ROOT}
-├── skills/feedback/SKILL.md     # the /web-feedback:feedback skill
+├── skills/feedback/SKILL.md     # /web-feedback:feedback — apply pending feedback
+├── skills/inject/SKILL.md       # /web-feedback:inject — add/remove the widget in your app
 ├── dist/bridge.js               # prebuilt bridge (MCP server + HTTP intake)
 └── public/                      # prebuilt widget.js + demo.html the bridge serves
 ```

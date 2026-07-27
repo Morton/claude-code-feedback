@@ -1,0 +1,44 @@
+---
+description: Add (or remove) the claude-code-feedback widget in the current project's web app so the user can leave in-page feedback. Use when the user asks to install, add, set up, wire in, or remove the feedback widget.
+---
+
+# Install the feedback widget
+
+Wire the feedback widget into this project's web app so it loads during local
+development. The widget is served by the bridge; all you add to the app is one
+script tag:
+
+```html
+<script src="http://localhost:7878/widget.js"></script>
+```
+
+If the bridge runs on a non-default port, use that port instead (check
+`CLAUDE_FEEDBACK_PORT`).
+
+## To install
+
+1. **Find the app's HTML entry / root template.** Common cases:
+   - **Vite, Create React App, or a plain static site:** the root `index.html` —
+     insert the tag just before `</body>`.
+   - **Next.js (app router):** `app/layout.tsx` — add a `<script>` inside `<body>`.
+   - **Next.js (pages router):** `pages/_document.tsx` — add inside `<body>`.
+   - **Nuxt, SvelteKit, Angular, Astro, etc.:** the equivalent root document or
+     `index.html`.
+   Search the repo for the entry file if it isn't obvious.
+2. **Insert the tag so it loads on every page, guarded to development only** so it
+   never ships to production. Use whatever the framework offers, for example:
+   - Vite: keep it in the dev `index.html`, or gate with `import.meta.env.DEV`.
+   - Next.js: render it only when `process.env.NODE_ENV !== "production"`.
+   - Plain static dev site: add the tag directly and note it must be removed before
+     deploying.
+3. **Leave a marker comment** like `<!-- claude-code-feedback dev widget -->` so the
+   tag is easy to find and remove later.
+4. **Tell the user** what you changed, that it's dev-only, and to restart or reload
+   their dev server so the widget loads.
+
+## To remove
+
+If the user asks to remove or uninstall the widget, find the script tag and its
+marker comment and delete them.
+
+$ARGUMENTS

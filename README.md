@@ -39,7 +39,13 @@ claude --dangerously-load-development-channels plugin:web-feedback@claude-code-f
 
 Channels are a research preview, so custom ones need the development flag for now. Add `--dangerously-skip-permissions` if you want Claude to apply changes fully hands-off — in projects you trust.
 
-**3. Add the widget to your app.** Drag this bookmarklet to your bookmarks bar, then click it on any `localhost` page. Nothing to install in your project:
+**3. Add the widget to your app.** Just ask Claude to do it — run the bundled skill:
+
+```
+/web-feedback:inject
+```
+
+Claude finds your app's entry template and adds a dev-only `<script>` tag for the widget (and can remove it just as easily). Prefer not to touch your source? Drag this bookmarklet to your bookmarks bar and click it on any `localhost` page instead — nothing to install in your project:
 
 ```
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
