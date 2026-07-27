@@ -4,6 +4,25 @@
   "private": true,
   "type": "module",
   "description": "Comment on your local web app and feed the feedback into your Claude Code session via MCP.",
+  "license": "MIT",
+  "author": "Martin Heller",
+  "homepage": "https://github.com/Morton/claude-code-feedback#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Morton/claude-code-feedback.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Morton/claude-code-feedback/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "feedback",
+    "screenshot",
+    "developer-tools",
+    "widget"
+  ],
   "bin": {
     "claude-feedback-bridge": "dist/bridge.js"
   },

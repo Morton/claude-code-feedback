@@ -4,6 +4,8 @@ Comment directly on your local web app and feed that feedback into your **Claude
 
 Draw a box on the page, type a note — the widget captures a **screenshot**, the **CSS selector** of what you marked, the page URL, and recent **console/network errors**, and hands them to Claude Code over **MCP**. Then you (or a loop) tell Claude to act on them.
 
+![The feedback widget open on a local web app: draw a box, type a note, send it to Claude Code.](assets/hero.png)
+
 ```
  ┌─────────────────────────────┐   POST /feedback    ┌──────────────────────────┐   MCP tools    ┌──────────────┐
  │ widget on your dev site     │ ──────────────────▶ │ bridge (local process)   │ ─────────────▶ │ Claude Code  │
@@ -14,6 +16,12 @@ Draw a box on the page, type a note — the widget captures a **screenshot**, th
 ```
 
 The capture half is framework-agnostic (vanilla TS + `html2canvas` + `@medv/finder`); the bridge is a single Node process that is **both** an HTTP intake for the widget **and** an MCP stdio server for Claude Code.
+
+## Requirements
+
+- **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)** (the plugin path needs a version with `/plugin` support)
+- **Node.js 18+**
+- **[pnpm](https://pnpm.io/)** — only for building from source
 
 ## Install as a plugin (recommended)
 
@@ -163,3 +171,21 @@ MCP server + `/feedback` skill, see [`plugin/`](plugin/)). Natural next steps:
 - **Element → source mapping**: capture the source `file:line` for the marked element (React JSX-source / Vite plugin) so Claude jumps straight to the component.
 - **Persistence** of the queue + screenshots to disk (currently in-memory per bridge process).
 - Get the channel onto the official allowlist so **push mode** drops the `--dangerously-load-development-channels` flag.
+
+## Contributing
+
+Issues and pull requests are welcome — it's a small, hackable codebase:
+
+```bash
+pnpm install
+pnpm run build          # public/widget.js + dist/bridge.js
+node test/loop.mjs      # smoke-test the MCP loop
+pnpm run build:plugin   # regenerate the bundled plugin artifacts before committing
+```
+
+The whole thing is three small files: `src/widget/widget.ts` (the in-page widget),
+`src/bridge.ts` (HTTP intake + MCP server + channel), and `src/store.ts` (the queue).
+
+## License
+
+[MIT](LICENSE) © Martin Heller

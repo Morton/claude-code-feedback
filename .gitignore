@@ -4,6 +4,9 @@ public/widget.js
 *.log
 .DS_Store
 
+# Local Claude Code settings (per-machine).
+.claude/settings.local.json
+
 # Local MCP registration — contains a machine-specific absolute path.
 # (Anchored to the repo root so the plugin's own .mcp.json is still tracked.)
 /.mcp.json
