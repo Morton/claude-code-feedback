@@ -1,59 +1,100 @@
 # claude-code-feedback
 
-Comment directly on your local web app and feed that feedback into your **Claude Code** session.
+**Stop pasting screenshots into Claude Code. Point at the problem in your browser instead.**
 
-Draw a box on the page, type a note — the widget captures a **screenshot**, the **CSS selector** of what you marked, the page URL, and recent **console/network errors**, and hands them to Claude Code over **MCP**. Then you (or a loop) tell Claude to act on them.
+Reviewing a frontend with Claude usually means screenshotting the page, cropping it, pasting it into the chat, and typing out *"the button in the top-right is misaligned."* `claude-code-feedback` turns all of that into a single gesture: draw a box on your running app, type a note, and hit send. Claude gets the screenshot, the exact element you marked, the page URL, and any recent console errors — then fixes it, right in your session.
 
 ![The feedback widget open on a local web app: draw a box, type a note, send it to Claude Code.](assets/hero.png)
 
+Ever wished you could give Claude feedback on a frontend as easily as leaving a comment? That's the whole idea — review your live app like a design doc, with Claude Code as the reviewer who actually does the work.
+
+## How it works
+
 ```
- ┌─────────────────────────────┐   POST /feedback    ┌──────────────────────────┐   MCP tools    ┌──────────────┐
- │ widget on your dev site     │ ──────────────────▶ │ bridge (local process)   │ ─────────────▶ │ Claude Code  │
- │ (localhost:3000)            │  msg, rect,         │ • HTTP intake :7878      │ list_feedback  │ session      │
- │ screenshot + selector +     │  selector,          │ • in-memory queue        │ get_feedback   │              │
- │ console/network diagnostics │  screenshot, diag   │ • MCP stdio server       │ resolve_…      │              │
- └─────────────────────────────┘                     └──────────────────────────┘                └──────────────┘
+ ┌─────────────────────────────┐  POST /feedback   ┌─────────────────────────┐  channel push   ┌──────────────┐
+ │ widget on your dev site     │ ────────────────▶ │ bridge (local process)  │ ──────────────▶ │ Claude Code  │
+ │ screenshot + selector +     │  message, region, │ • HTTP intake :7878     │  (or MCP tools) │ session      │
+ │ console/network diagnostics │  screenshot, diag │ • MCP stdio + channel   │                 │              │
+ └─────────────────────────────┘                   └─────────────────────────┘                 └──────────────┘
 ```
 
-The capture half is framework-agnostic (vanilla TS + `html2canvas` + `@medv/finder`); the bridge is a single Node process that is **both** an HTTP intake for the widget **and** an MCP stdio server for Claude Code.
+A small in-page **widget** captures your feedback and posts it to a local **bridge**. The bridge is a single Node process that also plugs into Claude Code, handing each item to your session — screenshot and all. The widget is framework-agnostic (vanilla TypeScript with `html2canvas` and `@medv/finder`), so it drops onto any dev site without a build step or dependency of yours.
 
-## Requirements
+## Get started
 
-- **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)** (the plugin path needs a version with `/plugin` support)
-- **Node.js 18+**
-- **[pnpm](https://pnpm.io/)** — only for building from source
+The experience this is built for is **live mode**: feedback streams straight into your session the moment you send it — no polling, no "check my feedback" prompt. It's powered by Claude Code [channels](https://code.claude.com/docs/en/channels).
 
-## Install as a plugin (recommended)
-
-The fastest way to use this in any project — no clone, no build, no path editing:
+**1. Install the plugin.** In any Claude Code session:
 
 ```
 /plugin marketplace add Morton/claude-code-feedback
 /plugin install web-feedback@claude-code-feedback
 ```
 
-That bundles the bridge (MCP server + widget host) and a **`/web-feedback:feedback`**
-skill. Then inject the widget on your running dev site — drag this **bookmarklet** to
-your bookmarks bar and click it on any `localhost` page (zero project changes):
+**2. Launch Claude Code in live mode** from your project:
+
+```bash
+claude --dangerously-load-development-channels plugin:web-feedback@claude-code-feedback
+```
+
+Channels are a research preview, so custom ones need the development flag for now. Add `--dangerously-skip-permissions` if you want Claude to apply changes fully hands-off — in projects you trust.
+
+**3. Add the widget to your app.** Drag this bookmarklet to your bookmarks bar, then click it on any `localhost` page. Nothing to install in your project:
 
 ```
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
 ```
 
-Leave a comment on the page, then run `/web-feedback:feedback` (or just say *"check my
-web feedback and apply it"*). See [`plugin/`](plugin/) for details, push mode, and the
-`--channels` flag.
+**4. Leave feedback.** Click the button, draw a box around what's wrong, type a note, and send. It lands in your session immediately and Claude gets to work — reading the screenshot, locating the code, and making the change.
 
-## Quick start (from source)
+Keep the session open and comment as you browse. Every note arrives live.
 
-Prefer to run it straight from this repo instead of the plugin:
+> Live mode requires Claude Code **v2.1.80+** and Anthropic authentication (claude.ai or a Console API key; it isn't available on Amazon Bedrock, Google Vertex, or Microsoft Foundry). On Team and Enterprise plans, an admin must enable channels first.
+
+## Prefer to stay in the driver's seat?
+
+If you'd rather trigger Claude yourself, skip the `--channels` flag and use the bundled skill. Leave your comments, then run:
+
+```
+/web-feedback:feedback
+```
+
+Claude reviews everything pending, applies each change, and marks it resolved. To keep applying comments as they arrive, run it under `/loop`. This pull mode works with a plain plugin install — no special launch flags needed.
+
+## What Claude receives
+
+Every comment carries the context Claude needs to act without guessing:
+
+- an annotated **screenshot** of the region you marked,
+- the **CSS selector** and tag of the element,
+- the **page URL**, and
+- recent **console and network errors** from the page.
+
+The bridge exposes this through four MCP tools:
+
+| Tool | Purpose |
+|---|---|
+| `list_feedback` | List pending items with message, URL, selector, and diagnostics |
+| `get_feedback(id)` | Fetch one item in full; returns the screenshot as an image |
+| `resolve_feedback(id)` | Mark an item handled so it drops off the list |
+| `clear_feedback` | Discard everything |
+
+## Requirements
+
+- **[Claude Code](https://docs.claude.com/en/docs/claude-code/overview)** — live mode needs v2.1.80 or later; the plugin install needs a version with `/plugin` support
+- **Node.js 18** or later
+- **[pnpm](https://pnpm.io/)** — only if you build from source
+
+## Run it from source
+
+Prefer to run the bridge straight from this repo instead of installing the plugin? Build it, then register it as an MCP server.
 
 ```bash
 pnpm install
-pnpm run build        # builds public/widget.js + dist/bridge.js
+pnpm run build   # builds public/widget.js and dist/bridge.js
 ```
 
-**1. Register the bridge as an MCP server** in your project's `.mcp.json` (or Claude Code settings):
+Add the bridge to your project's `.mcp.json`:
 
 ```json
 {
@@ -66,125 +107,50 @@ pnpm run build        # builds public/widget.js + dist/bridge.js
 }
 ```
 
-Claude Code spawns it; it also opens `http://localhost:7878` for the widget. (Override the port with `CLAUDE_FEEDBACK_PORT`.)
+Claude Code launches it on demand, and it serves the widget on `http://localhost:7878`. Set `CLAUDE_FEEDBACK_PORT` to change the port. This path is machine-specific, so keep your `.mcp.json` local (it's gitignored here).
 
-**2. Inject the widget** into your dev site — one tag, dev-only:
+Inject the widget with the bookmarklet above, or add a dev-only tag to your app:
 
 ```html
 <script src="http://localhost:7878/widget.js"></script>
 ```
 
-(Or just open the bundled demo at `http://localhost:7878/demo.html`.)
+For live mode from source, launch with `claude --dangerously-load-development-channels server:web-feedback` — the name matches the key in your `.mcp.json`.
 
-> **Want a realistic test bed?** `pnpm run example` serves a small fake dashboard
-> ("Orbit") on `http://localhost:3000` with deliberate UI issues to comment on —
-> it pulls the widget in cross-origin, exactly like a real dev site would. See
-> [`example/`](example/).
+## Try it with the example app
 
-**3. Use it.** Run `claude` in your project + your dev server. Leave comments on the page, then in the CLI:
-
-> "Check my web feedback and apply it."
-
-Claude calls `list_feedback` / `get_feedback` (it can *see* each screenshot), makes the changes, and calls `resolve_feedback`. For a hands-off loop, run it under `/loop` so it applies comments as they arrive.
-
-## Push vs. pull
-
-By default the loop above is **pull**: Claude polls `list_feedback` (under `/loop`) or
-you ask it to. The bridge is also a Claude Code **[channel](https://code.claude.com/docs/en/channels)**,
-so it can **push** instead — the moment you hit *Send* in the widget, the item is
-injected into your running session and Claude acts on it, no polling.
-
-Start the session with the channel enabled (the server name matches the key in your
-`.mcp.json`):
+The repo ships a small demo dashboard, "Orbit," with a few deliberate UI problems to practice on:
 
 ```bash
-# Channels are a research preview; a custom one isn't on the allowlist yet, so:
-claude --dangerously-load-development-channels server:web-feedback
-
-# Fully hands-off (Claude edits files without per-action prompts) — trusted dirs only:
-claude --dangerously-load-development-channels server:web-feedback --dangerously-skip-permissions
+pnpm run example   # serves the demo at http://localhost:3000
 ```
 
-Each new comment arrives as `<channel source="claude-code-feedback" id="…" selector="…">`
-with a nudge to call `get_feedback(id)` (which returns the screenshot), apply it, and
-`resolve_feedback(id)`. The push is harmless when you *don't* launch with `--channels`:
-Claude Code just drops the notification, and pull mode still works.
+It loads the widget cross-origin from the bridge, exactly like a real dev site would. See [`example/`](example/) for the details, and [`plugin/`](plugin/) for how the plugin is packaged.
 
-> Channels require Claude Code **v2.1.80+** and Anthropic auth (claude.ai or a Console
-> API key; not Bedrock/Vertex/Foundry). On Team/Enterprise an admin must enable them.
-> Syntax may change while it's in research preview.
+## Good to know
 
-## MCP tools
+- The feedback queue lives **in memory** in the bridge process. Run one Claude Code session per project on a given port — a second session can't bind `:7878` and won't receive feedback (it stays connected but logs a warning). Use `CLAUDE_FEEDBACK_PORT` to run more than one.
+- Start the bridge (by launching Claude Code) **before** the widget loads, or `widget.js` returns a 404.
 
-| Tool | Purpose |
-|---|---|
-| `list_feedback` | Pending items: message, URL, selector, diagnostics |
-| `get_feedback(id)` | One item in full, screenshot returned as an **image** |
-| `resolve_feedback(id)` | Mark handled (drops from the list) |
-| `clear_feedback` | Discard everything |
+## Roadmap
 
-## Local development & testing
+The end-to-end loop is proven and packaged as a Claude Code plugin. On the horizon:
 
-```bash
-pnpm install
-pnpm run build        # builds public/widget.js + dist/bridge.js
-```
-
-**Quick, non-interactive check** — no browser, no Claude session:
-
-```bash
-node test/loop.mjs    # spawns the bridge over MCP, posts feedback, reads it back via the tools
-```
-
-**Full end-to-end test** against the bundled [`example/`](example/) app ("Orbit", a
-fake dashboard with deliberate UI issues to comment on):
-
-1. **Register the bridge** in `.mcp.json` (see [Quick start](#quick-start)) using an
-   absolute path to `dist/bridge.js`.
-2. **Terminal A — start Claude in this repo:** `claude`. It spawns the bridge as a
-   stdio MCP server, which opens the HTTP intake on `:7878`. Run `/mcp` and confirm
-   `web-feedback` is **connected** with the four tools. (If you just edited
-   `.mcp.json`, restart `claude` so it re-spawns.)
-3. **Terminal B — serve the example:** `pnpm run example` → <http://localhost:3000>.
-   The static server auto-injects `<script src="http://localhost:7878/widget.js">`,
-   so the widget loads cross-origin from the bridge.
-4. **Leave feedback:** open the page, click 💬, box one of the planted issues, Send.
-5. **Back in Terminal A:** *"Check my web feedback and apply it."* — or run it under
-   `/loop` to apply comments as they arrive.
-
-**Gotchas**
-
-- Start the **bridge (via Claude) before** the example, or `widget.js` 404s.
-- The feedback queue is **in-memory in the bridge process**. Run only **one `claude`
-  session per project** for a given port — a second one spawns a second bridge that
-  can't bind `:7878`; it stays connected over MCP but won't receive widget posts
-  (it logs a warning). Use `CLAUDE_FEEDBACK_PORT` to run more than one on distinct ports.
-- `.mcp.json` holds a machine-specific absolute path, so it's gitignored — create your
-  own locally.
-
-## Status & roadmap
-
-Prototype — proves the end-to-end loop. Packaged as a **Claude Code plugin** (bundled
-MCP server + `/feedback` skill, see [`plugin/`](plugin/)). Natural next steps:
-
-- **Browser extension** so it injects on any `localhost` site with zero project changes (vs. the `<script>` tag / bookmarklet).
-- **Element → source mapping**: capture the source `file:line` for the marked element (React JSX-source / Vite plugin) so Claude jumps straight to the component.
-- **Persistence** of the queue + screenshots to disk (currently in-memory per bridge process).
-- Get the channel onto the official allowlist so **push mode** drops the `--dangerously-load-development-channels` flag.
+- A **browser extension** that injects the widget on any `localhost` site automatically, replacing the bookmarklet.
+- **Element-to-source mapping** — capture the source `file:line` of the marked element (via React JSX source or a Vite plugin) so Claude jumps straight to the component.
+- **On-disk persistence** for the queue and screenshots (currently in memory, per bridge process).
+- Getting the channel onto the official allowlist so live mode no longer needs the development flag.
 
 ## Contributing
 
-Issues and pull requests are welcome — it's a small, hackable codebase:
+Issues and pull requests are welcome — it's a small, hackable codebase built from three files: `src/widget/widget.ts` (the in-page widget), `src/bridge.ts` (HTTP intake, MCP server, and channel), and `src/store.ts` (the queue).
 
 ```bash
 pnpm install
-pnpm run build          # public/widget.js + dist/bridge.js
+pnpm run build          # public/widget.js and dist/bridge.js
 node test/loop.mjs      # smoke-test the MCP loop
 pnpm run build:plugin   # regenerate the bundled plugin artifacts before committing
 ```
-
-The whole thing is three small files: `src/widget/widget.ts` (the in-page widget),
-`src/bridge.ts` (HTTP intake + MCP server + channel), and `src/store.ts` (the queue).
 
 ## License
 
