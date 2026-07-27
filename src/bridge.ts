@@ -15,6 +15,11 @@ import {
 } from "./store.js";
 
 const PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+// Bind to loopback only — the intake must never be reachable from the network.
+const HOST = "127.0.0.1";
+// Optional shared secret. When set, POST /feedback must carry it; the widget
+// picks it up automatically from the token the bridge injects into widget.js.
+const TOKEN = process.env.CLAUDE_FEEDBACK_TOKEN || null;
 
 // stdio carries the MCP protocol — never write to stdout.
 const log = (...args: unknown[]) => console.error("[claude-feedback]", ...args);
@@ -26,7 +31,36 @@ const log = (...args: unknown[]) => console.error("[claude-feedback]", ...args);
 function cors(res: ServerResponse): void {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Feedback-Token");
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost");
+}
+
+// Feedback is a prompt-injection surface, so gate the write path:
+//   • a browser Origin must be a loopback host — blocks a random website from
+//     POSTing feedback into your session (requests with no Origin are allowed,
+//     e.g. curl or same-origin);
+//   • if a token is configured, it must match.
+function postAllowed(req: IncomingMessage): { ok: true } | { ok: false; status: number; error: string } {
+  const origin = req.headers.origin;
+  if (origin) {
+    let allowed = false;
+    try {
+      allowed = isLoopbackHost(new URL(origin).hostname);
+    } catch {
+      allowed = false;
+    }
+    if (!allowed) {
+      return { ok: false, status: 403, error: "origin not allowed" };
+    }
+  }
+  if (TOKEN && req.headers["x-feedback-token"] !== TOKEN) {
+    return { ok: false, status: 401, error: "invalid or missing feedback token" };
+  }
+  return { ok: true };
 }
 
 function readBody(req: IncomingMessage, limitBytes = 25 * 1024 * 1024): Promise<string> {
@@ -57,6 +91,24 @@ async function serveStatic(res: ServerResponse, file: string, type: string): Pro
   }
 }
 
+// Serve the widget, injecting the shared token (if any) so the in-page widget
+// sends it back on POST /feedback without the user wiring anything up.
+async function serveWidget(res: ServerResponse): Promise<void> {
+  try {
+    let body = await readFile(
+      fileURLToPath(new URL("../public/widget.js", import.meta.url)),
+      "utf8"
+    );
+    if (TOKEN) {
+      body = `window.__CLAUDE_FEEDBACK_TOKEN__=${JSON.stringify(TOKEN)};\n${body}`;
+    }
+    res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+    res.end(body);
+  } catch {
+    res.writeHead(404).end("not found");
+  }
+}
+
 const httpServer = createServer(async (req, res) => {
   cors(res);
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -67,6 +119,12 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/feedback") {
+    const gate = postAllowed(req);
+    if (!gate.ok) {
+      res.writeHead(gate.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: gate.error }));
+      return;
+    }
     try {
       const item = addFeedback(JSON.parse(await readBody(req)));
       log(`+ feedback ${item.id} on ${item.url} — "${item.message.slice(0, 60)}"`);
@@ -96,7 +154,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/widget.js") {
-    await serveStatic(res, "widget.js", "application/javascript; charset=utf-8");
+    await serveWidget(res);
     return;
   }
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/demo.html")) {
@@ -268,8 +326,11 @@ async function main() {
       log("HTTP server error:", err);
     }
   });
-  httpServer.listen(PORT, () => {
-    log(`HTTP intake on http://localhost:${PORT}  (widget.js, /feedback, demo.html)`);
+  httpServer.listen(PORT, HOST, () => {
+    log(
+      `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` +
+        (TOKEN ? "  [token required]" : "")
+    );
   });
   await mcp.connect(new StdioServerTransport());
   log("MCP server connected on stdio");

@@ -8110,6 +8110,7 @@
       return "http://localhost:7878";
     }
   })();
+  var FEEDBACK_TOKEN = window.__CLAUDE_FEEDBACK_TOKEN__;
   function el(tag, styles = {}, text) {
     const node = document.createElement(tag);
     node.setAttribute(UI_ATTR, "true");
@@ -8353,7 +8354,10 @@
     try {
       const res = await fetch(`${BRIDGE_ORIGIN}/feedback`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...FEEDBACK_TOKEN ? { "X-Feedback-Token": FEEDBACK_TOKEN } : {}
+        },
         body: JSON.stringify(payload)
       });
       if (!res.ok) return null;

@@ -63,11 +63,35 @@ function clearFeedback() {
 
 // src/bridge.ts
 var PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+var HOST = "127.0.0.1";
+var TOKEN = process.env.CLAUDE_FEEDBACK_TOKEN || null;
 var log = (...args) => console.error("[claude-feedback]", ...args);
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Feedback-Token");
+}
+function isLoopbackHost(hostname) {
+  const h = hostname.replace(/^\[|\]$/g, "");
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.endsWith(".localhost");
+}
+function postAllowed(req) {
+  const origin = req.headers.origin;
+  if (origin) {
+    let allowed = false;
+    try {
+      allowed = isLoopbackHost(new URL(origin).hostname);
+    } catch {
+      allowed = false;
+    }
+    if (!allowed) {
+      return { ok: false, status: 403, error: "origin not allowed" };
+    }
+  }
+  if (TOKEN && req.headers["x-feedback-token"] !== TOKEN) {
+    return { ok: false, status: 401, error: "invalid or missing feedback token" };
+  }
+  return { ok: true };
 }
 function readBody(req, limitBytes = 25 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -95,6 +119,22 @@ async function serveStatic(res, file, type) {
     res.writeHead(404).end("not found");
   }
 }
+async function serveWidget(res) {
+  try {
+    let body = await readFile(
+      fileURLToPath(new URL("../public/widget.js", import.meta.url)),
+      "utf8"
+    );
+    if (TOKEN) {
+      body = `window.__CLAUDE_FEEDBACK_TOKEN__=${JSON.stringify(TOKEN)};
+${body}`;
+    }
+    res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+    res.end(body);
+  } catch {
+    res.writeHead(404).end("not found");
+  }
+}
 var httpServer = createServer(async (req, res) => {
   cors(res);
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -103,6 +143,12 @@ var httpServer = createServer(async (req, res) => {
     return;
   }
   if (req.method === "POST" && url.pathname === "/feedback") {
+    const gate = postAllowed(req);
+    if (!gate.ok) {
+      res.writeHead(gate.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: gate.error }));
+      return;
+    }
     try {
       const item = addFeedback(JSON.parse(await readBody(req)));
       log(`+ feedback ${item.id} on ${item.url} \u2014 "${item.message.slice(0, 60)}"`);
@@ -128,7 +174,7 @@ var httpServer = createServer(async (req, res) => {
     return;
   }
   if (req.method === "GET" && url.pathname === "/widget.js") {
-    await serveStatic(res, "widget.js", "application/javascript; charset=utf-8");
+    await serveWidget(res);
     return;
   }
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/demo.html")) {
@@ -254,8 +300,10 @@ async function main() {
       log("HTTP server error:", err);
     }
   });
-  httpServer.listen(PORT, () => {
-    log(`HTTP intake on http://localhost:${PORT}  (widget.js, /feedback, demo.html)`);
+  httpServer.listen(PORT, HOST, () => {
+    log(
+      `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` + (TOKEN ? "  [token required]" : "")
+    );
   });
   await mcp.connect(new StdioServerTransport());
   log("MCP server connected on stdio");

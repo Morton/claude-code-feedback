@@ -132,6 +132,14 @@ It loads the widget cross-origin from the bridge, exactly like a real dev site w
 - The feedback queue lives **in memory** in the bridge process. Run one Claude Code session per project on a given port — a second session can't bind `:7878` and won't receive feedback (it stays connected but logs a warning). Use `CLAUDE_FEEDBACK_PORT` to run more than one.
 - Start the bridge (by launching Claude Code) **before** the widget loads, or `widget.js` returns a 404.
 
+## Security
+
+Feedback becomes text and images in your Claude Code session, so the intake is a potential prompt-injection surface. The bridge is locked down accordingly:
+
+- It **binds to `127.0.0.1` only** — nothing on your network can reach it.
+- `POST /feedback` is **rejected unless the browser `Origin` is a loopback host**, so a random website you visit can't push feedback into your session.
+- Set **`CLAUDE_FEEDBACK_TOKEN`** for an extra layer: the bridge then requires that shared secret on every post and injects it into the widget automatically, so nothing else on the machine can post.
+
 ## Roadmap
 
 The end-to-end loop is proven and packaged as a Claude Code plugin. On the horizon:

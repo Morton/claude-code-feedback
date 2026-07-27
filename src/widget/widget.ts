@@ -40,6 +40,10 @@ const BRIDGE_ORIGIN = (() => {
   }
 })();
 
+// Optional shared secret the bridge injects when CLAUDE_FEEDBACK_TOKEN is set.
+const FEEDBACK_TOKEN = (window as { __CLAUDE_FEEDBACK_TOKEN__?: string })
+  .__CLAUDE_FEEDBACK_TOKEN__;
+
 // --- tiny DOM helpers -------------------------------------------------------
 
 type Styles = Partial<CSSStyleDeclaration>;
@@ -345,7 +349,10 @@ async function postFeedback(payload: unknown): Promise<string | null> {
   try {
     const res = await fetch(`${BRIDGE_ORIGIN}/feedback`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(FEEDBACK_TOKEN ? { "X-Feedback-Token": FEEDBACK_TOKEN } : {}),
+      },
       body: JSON.stringify(payload),
     });
     if (!res.ok) return null;
