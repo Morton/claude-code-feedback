@@ -5,11 +5,18 @@
  * Draw a rectangle, type a note — it captures a screenshot + CSS selector +
  * recent console/network diagnostics and POSTs them to the local bridge, which
  * surfaces them to your Claude Code session over MCP.
+ *
+ * Start it with the floating button or the keyboard (Alt+Shift+F by default).
+ * Either way the page is snapshotted *before* the selection overlay appears, so
+ * hover-only UI — menus, tooltips, :hover styling — survives into the shot.
  */
 import { finder } from "@medv/finder";
 import html2canvas from "html2canvas";
 
 const UI_ATTR = "data-feedback-ui";
+// Marks the live `:hover` chain so it can be replayed inside html2canvas's clone.
+const HOVER_ATTR = "data-feedback-hover";
+const HOVER_CLASS = "claude-feedback-hover";
 // Claude brand palette.
 const ACCENT = "#D97757"; // Claude coral
 const ACCENT_RGB = "217,119,87";
@@ -30,11 +37,12 @@ function claudeMark(size: number, color: string): string {
   );
 }
 
+const SCRIPT_EL = document.currentScript as HTMLScriptElement | null;
+
 // The bridge that served this script is where we post feedback.
 const BRIDGE_ORIGIN = (() => {
-  const script = document.currentScript as HTMLScriptElement | null;
   try {
-    return script?.src ? new URL(script.src).origin : "http://localhost:7878";
+    return SCRIPT_EL?.src ? new URL(SCRIPT_EL.src).origin : "http://localhost:7878";
   } catch {
     return "http://localhost:7878";
   }
@@ -43,6 +51,123 @@ const BRIDGE_ORIGIN = (() => {
 // Optional shared secret the bridge injects when CLAUDE_FEEDBACK_TOKEN is set.
 const FEEDBACK_TOKEN = (window as { __CLAUDE_FEEDBACK_TOKEN__?: string })
   .__CLAUDE_FEEDBACK_TOKEN__;
+
+// --- keyboard trigger -------------------------------------------------------
+
+interface Hotkey {
+  key: string; // lowercase `e.key`, or a bare `e.code` like "f2"
+  alt: boolean;
+  ctrl: boolean;
+  shift: boolean;
+  meta: boolean;
+}
+
+/**
+ * Override with `<script src="…/widget.js" data-hotkey="ctrl+shift+k">` or
+ * `window.__CLAUDE_FEEDBACK_HOTKEY__ = "f2"`. Set it to "none" to disable.
+ */
+const HOTKEY_SPEC =
+  (window as { __CLAUDE_FEEDBACK_HOTKEY__?: string }).__CLAUDE_FEEDBACK_HOTKEY__ ??
+  SCRIPT_EL?.dataset.hotkey ??
+  "alt+shift+f";
+
+function parseHotkey(spec: string): Hotkey | null {
+  const parts = spec
+    .toLowerCase()
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const key = parts.pop();
+  if (!key || key === "none" || key === "off") return null;
+  const hotkey: Hotkey = { key, alt: false, ctrl: false, shift: false, meta: false };
+  for (const part of parts) {
+    if (part === "alt" || part === "option" || part === "opt") hotkey.alt = true;
+    else if (part === "ctrl" || part === "control") hotkey.ctrl = true;
+    else if (part === "shift") hotkey.shift = true;
+    else if (part === "meta" || part === "cmd" || part === "command") hotkey.meta = true;
+    else return null; // unknown modifier — safer to bind nothing than the wrong thing
+  }
+  return hotkey;
+}
+
+const HOTKEY = parseHotkey(HOTKEY_SPEC);
+
+/** Human-readable form for the button tooltip, e.g. "⌥⇧F" / "Alt+Shift+F". */
+function hotkeyLabel(hotkey: Hotkey): string {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const parts: string[] = [];
+  if (hotkey.ctrl) parts.push(mac ? "⌃" : "Ctrl");
+  if (hotkey.alt) parts.push(mac ? "⌥" : "Alt");
+  if (hotkey.shift) parts.push(mac ? "⇧" : "Shift");
+  if (hotkey.meta) parts.push(mac ? "⌘" : "Meta");
+  parts.push(
+    hotkey.key.length === 1
+      ? hotkey.key.toUpperCase()
+      : hotkey.key.charAt(0).toUpperCase() + hotkey.key.slice(1)
+  );
+  return mac ? parts.join("") : parts.join("+");
+}
+
+function isEditable(node: EventTarget | null): boolean {
+  if (!(node instanceof HTMLElement)) return false;
+  return (
+    node.isContentEditable ||
+    node instanceof HTMLInputElement ||
+    node instanceof HTMLTextAreaElement ||
+    node instanceof HTMLSelectElement
+  );
+}
+
+function matchesHotkey(e: KeyboardEvent, hotkey: Hotkey): boolean {
+  if (
+    e.altKey !== hotkey.alt ||
+    e.ctrlKey !== hotkey.ctrl ||
+    e.shiftKey !== hotkey.shift ||
+    e.metaKey !== hotkey.meta
+  ) {
+    return false;
+  }
+  // Alt-chords produce exotic `key` values on macOS ("Ï"), so accept `code` too.
+  const code = (e.code || "").toLowerCase();
+  return (
+    (e.key || "").toLowerCase() === hotkey.key ||
+    code === hotkey.key ||
+    code === `key${hotkey.key}` ||
+    code === `digit${hotkey.key}`
+  );
+}
+
+function installHotkey() {
+  if (!HOTKEY) return;
+  const bare = !HOTKEY.alt && !HOTKEY.ctrl && !HOTKEY.meta;
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.repeat || !matchesHotkey(e, HOTKEY)) return;
+      // A modifier-free hotkey must not steal keystrokes from a form field.
+      if (bare && isEditable(e.target)) return;
+      e.preventDefault();
+      void startCapture();
+    },
+    true
+  );
+}
+
+// --- pointer tracking -------------------------------------------------------
+
+// Where the mouse was when a capture started: the element under it is the best
+// anchor for a hover-triggered shot, since the hover is gone once we overlay.
+let pointer: { x: number; y: number } | null = null;
+
+function trackPointer() {
+  window.addEventListener(
+    "pointermove",
+    (e) => {
+      pointer = { x: e.clientX, y: e.clientY };
+    },
+    { capture: true, passive: true }
+  );
+}
 
 // --- tiny DOM helpers -------------------------------------------------------
 
@@ -129,7 +254,12 @@ function safeStringify(value: unknown): string {
 
 // --- capture ----------------------------------------------------------------
 
-function resolveAnchor(clientX: number, clientY: number) {
+interface Anchor {
+  selector: string;
+  elementTag: string;
+}
+
+function resolveAnchor(clientX: number, clientY: number): Anchor {
   const node = document
     .elementsFromPoint(clientX, clientY)
     .find((e): e is HTMLElement => e instanceof HTMLElement && !isOwnUi(e));
@@ -145,25 +275,133 @@ function resolveAnchor(clientX: number, clientY: number) {
   return { selector, elementTag: node.tagName };
 }
 
-async function captureRegion(rect: {
-  left: number;
-  top: number;
+/**
+ * html2canvas renders a *clone* of the page in a detached iframe, where nothing
+ * is hovered — so `:hover` styling silently disappears from screenshots. Tag the
+ * live hover chain here, and `replayHover` re-applies it inside the clone.
+ */
+function markHoverChain(): { hovering: boolean; unmark: () => void } {
+  let chain: Element[] = [];
+  try {
+    chain = Array.from(document.querySelectorAll(":hover")).filter((n) => !isOwnUi(n));
+  } catch {
+    chain = [];
+  }
+  for (const node of chain) node.setAttribute(HOVER_ATTR, "true");
+  return {
+    // <html> and <body> are always in the chain; anything deeper is a real hover.
+    hovering: chain.length > 2,
+    unmark: () => {
+      for (const node of chain) node.removeAttribute(HOVER_ATTR);
+    },
+  };
+}
+
+/** Every `:hover` rule on the page, restated against a plain class. */
+function hoverStyles(): string {
+  const out: string[] = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      collectHoverRules(sheet.cssRules, out);
+    } catch {
+      continue; // cross-origin stylesheet — cssRules throws
+    }
+  }
+  return out.join("\n");
+}
+
+function collectHoverRules(rules: CSSRuleList, out: string[]) {
+  for (const rule of Array.from(rules)) {
+    if (rule instanceof CSSStyleRule) {
+      if (rule.selectorText.includes(":hover")) {
+        const selector = rule.selectorText.replace(/:hover/g, `.${HOVER_CLASS}`);
+        out.push(`${selector} { ${rule.style.cssText} }`);
+      }
+    } else if (typeof CSSGroupingRule !== "undefined" && rule instanceof CSSGroupingRule) {
+      // @media / @supports / @container — keep the prelude, recurse into the body.
+      const nested: string[] = [];
+      collectHoverRules(rule.cssRules, nested);
+      if (nested.length) {
+        const prelude = rule.cssText.slice(0, rule.cssText.indexOf("{")).trim();
+        out.push(`${prelude} {\n${nested.join("\n")}\n}`);
+      }
+    }
+  }
+}
+
+function replayHover(clone: Document, css: string) {
+  const marked = clone.querySelectorAll(`[${HOVER_ATTR}]`);
+  if (!marked.length || !css) return;
+  for (const node of Array.from(marked)) node.classList.add(HOVER_CLASS);
+  const style = clone.createElement("style");
+  style.textContent = css;
+  clone.head?.appendChild(style);
+}
+
+interface Snapshot {
+  canvas: HTMLCanvasElement;
+  /** Device pixels per CSS pixel in `canvas`. */
+  scale: number;
   width: number;
   height: number;
-}): Promise<string | null> {
+}
+
+/**
+ * Freeze the whole viewport as it looks *right now*, before any of our own UI
+ * covers it. Everything that depends on the pointer staying put — hover menus,
+ * tooltips, `:hover` styling — is still on screen at this moment.
+ */
+async function freezeViewport(): Promise<Snapshot | null> {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const { hovering, unmark } = markHoverChain();
+  // Walking every stylesheet isn't free — only worth it if something is hovered.
+  const css = hovering ? hoverStyles() : "";
   try {
     const canvas = await html2canvas(document.body, {
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY,
-      width: rect.width,
-      height: rect.height,
+      x: window.scrollX,
+      y: window.scrollY,
+      width,
+      height,
       scale: window.devicePixelRatio || 1,
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
       ignoreElements: (node) => isOwnUi(node),
+      onclone: (clone) => replayHover(clone, css),
     });
-    return canvas.toDataURL("image/jpeg", 0.7);
+    return { canvas, scale: canvas.width / width, width, height };
+  } catch {
+    return null;
+  } finally {
+    unmark();
+  }
+}
+
+/** Cut the selected region out of the frozen viewport. */
+function cropSnapshot(
+  snapshot: Snapshot,
+  rect: { left: number; top: number; width: number; height: number }
+): string | null {
+  try {
+    const { scale } = snapshot;
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(rect.width * scale));
+    out.height = Math.max(1, Math.round(rect.height * scale));
+    const ctx = out.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(
+      snapshot.canvas,
+      rect.left * scale,
+      rect.top * scale,
+      rect.width * scale,
+      rect.height * scale,
+      0,
+      0,
+      out.width,
+      out.height
+    );
+    return out.toDataURL("image/jpeg", 0.7);
   } catch {
     return null;
   }
@@ -171,18 +409,65 @@ async function captureRegion(rect: {
 
 // --- UI flow ----------------------------------------------------------------
 
-let drawing = false;
+// True from the moment a capture starts until the composer closes, so a second
+// trigger (button or hotkey) can't stack overlays.
+let busy = false;
 
-function startDrawing() {
-  if (drawing) return;
-  drawing = true;
+/**
+ * Snapshot first, select second. The freeze happens while the page is still
+ * untouched, which is what makes a hover-only state capturable: press the
+ * hotkey without moving the mouse, then take as long as you like drawing the
+ * box over the frozen image.
+ */
+async function startCapture(hoverAnchored = true) {
+  if (busy) return;
+  busy = true;
+  // For a keyboard trigger the pointer hasn't moved, so whatever sits under it
+  // is the subject — resolve it now, while the hover-only UI is still there.
+  // Clicking the button moves the pointer onto our own UI, so skip it there.
+  const at = hoverAnchored ? pointer : null;
+  const hovered = at ? resolveAnchor(at.x, at.y) : null;
+  const banner = showHint("Capturing the page…");
+  const snapshot = await freezeViewport();
+  banner.remove();
+  if (!snapshot) {
+    busy = false;
+    toast("Couldn't capture the page");
+    return;
+  }
+  selectRegion(snapshot, hovered, at);
+}
 
+function selectRegion(
+  snapshot: Snapshot,
+  hovered: Anchor | null,
+  hoveredAt: { x: number; y: number } | null
+) {
   const overlay = el("div", {
     position: "fixed",
     inset: "0",
     zIndex: "2147483600",
     cursor: "crosshair",
+    overflow: "hidden",
+  });
+
+  // The frozen page, pinned under the selection UI. The live DOM behind it may
+  // already have moved on (the hover state is gone the moment we cover it).
+  const frame = snapshot.canvas;
+  frame.setAttribute(UI_ATTR, "true");
+  Object.assign(frame.style, {
+    position: "absolute",
+    left: "0",
+    top: "0",
+    width: `${snapshot.width}px`,
+    height: `${snapshot.height}px`,
+    pointerEvents: "none",
+  });
+  const wash = el("div", {
+    position: "absolute",
+    inset: "0",
     background: `rgba(${ACCENT_RGB},0.08)`,
+    pointerEvents: "none",
   });
   const box = el("div", {
     position: "fixed",
@@ -191,20 +476,26 @@ function startDrawing() {
     pointerEvents: "none",
     display: "none",
   });
-  overlay.appendChild(box);
+  overlay.append(frame, wash, box);
   document.body.appendChild(overlay);
+  const hint = showHint("Page frozen — drag to select · Esc to cancel");
 
   let start: { x: number; y: number } | null = null;
 
-  const cleanup = () => {
-    drawing = false;
+  const cleanup = (done = false) => {
+    if (!done) busy = false;
     overlay.remove();
+    hint.remove();
     window.removeEventListener("keydown", onKey);
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") cleanup();
   };
   window.addEventListener("keydown", onKey);
+  // Scrolling would slide the live page out from under the frozen image.
+  const blockScroll = (e: Event) => e.preventDefault();
+  overlay.addEventListener("wheel", blockScroll, { passive: false });
+  overlay.addEventListener("touchmove", blockScroll, { passive: false });
 
   overlay.addEventListener("pointerdown", (e) => {
     start = { x: e.clientX, y: e.clientY };
@@ -225,7 +516,7 @@ function startDrawing() {
       height: `${Math.abs(e.clientY - start.y)}px`,
     });
   });
-  overlay.addEventListener("pointerup", async (e) => {
+  overlay.addEventListener("pointerup", (e) => {
     if (!start) {
       cleanup();
       return;
@@ -236,19 +527,54 @@ function startDrawing() {
       width: Math.abs(e.clientX - start.x),
       height: Math.abs(e.clientY - start.y),
     };
-    cleanup();
-    if (rect.width < MIN_SIZE || rect.height < MIN_SIZE) return;
+    const small = rect.width < MIN_SIZE || rect.height < MIN_SIZE;
+    cleanup(!small);
+    if (small) return;
 
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
-    const anchor = resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    const screenshotDataUrl = await captureRegion(rect);
-    openComposer(rect, anchor, screenshotDataUrl);
+    // Prefer the element that was under the pointer at freeze time when the
+    // selection covers it: after the overlay, hover-only UI is no longer there
+    // to be found by `elementsFromPoint`.
+    const inRect =
+      hoveredAt !== null &&
+      hoveredAt.x >= rect.left &&
+      hoveredAt.x <= rect.left + rect.width &&
+      hoveredAt.y >= rect.top &&
+      hoveredAt.y <= rect.top + rect.height;
+    const anchor =
+      inRect && hovered?.selector
+        ? hovered
+        : resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    openComposer(rect, anchor, cropSnapshot(snapshot, rect));
   });
+}
+
+/** Small pill at the top of the screen; our own UI, so never screenshotted. */
+function showHint(text: string): HTMLElement {
+  const node = el(
+    "div",
+    {
+      position: "fixed",
+      top: "16px",
+      left: "50%",
+      transform: "translateX(-50%)",
+      zIndex: "2147483603",
+      background: "#1a1a22",
+      color: "#fff",
+      padding: "7px 14px",
+      borderRadius: "999px",
+      font: "13px -apple-system, system-ui, sans-serif",
+      boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+      pointerEvents: "none", // must never join the `:hover` chain we're capturing
+    },
+    text
+  );
+  document.body.appendChild(node);
+  return node;
 }
 
 function openComposer(
   rect: { left: number; top: number; width: number; height: number },
-  anchor: { selector: string; elementTag: string },
+  anchor: Anchor,
   screenshotDataUrl: string | null
 ) {
   const panel = el("div", {
@@ -307,7 +633,10 @@ function openComposer(
   document.body.appendChild(panel);
   textarea.focus();
 
-  const close = () => panel.remove();
+  const close = () => {
+    panel.remove();
+    busy = false;
+  };
   cancel.addEventListener("click", close);
   send.addEventListener("click", async () => {
     send.disabled = true;
@@ -480,8 +809,10 @@ function mountFab() {
     }
   );
   fab.innerHTML = claudeMark(26, "#fff");
-  fab.title = "Leave feedback for Claude Code";
-  fab.addEventListener("click", startDrawing);
+  fab.title = HOTKEY
+    ? `Leave feedback for Claude Code (${hotkeyLabel(HOTKEY)})`
+    : "Leave feedback for Claude Code";
+  fab.addEventListener("click", () => void startCapture(false));
   document.body.appendChild(fab);
 }
 
@@ -499,6 +830,12 @@ function injectStyles() {
 
 installDiagnostics();
 injectStyles();
+trackPointer();
+installHotkey();
+// Escape hatch for custom triggers (your own shortcut, a dev-menu item, …).
+(window as { __CLAUDE_FEEDBACK__?: { capture: () => void } }).__CLAUDE_FEEDBACK__ = {
+  capture: () => void startCapture(),
+};
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", mountFab);
 } else {
