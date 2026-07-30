@@ -352,8 +352,10 @@ interface Snapshot {
  * tooltips, `:hover` styling — is still on screen at this moment.
  */
 async function freezeViewport(): Promise<Snapshot | null> {
-  const width = window.innerWidth;
-  const height = window.innerHeight;
+  // The client box excludes scrollbars, so it matches both the pointer's
+  // clientX/clientY space and the fixed overlay we paint the snapshot into.
+  const width = document.documentElement.clientWidth;
+  const height = document.documentElement.clientHeight;
   const { hovering, unmark } = markHoverChain();
   // Walking every stylesheet isn't free — only worth it if something is hovered.
   const css = hovering ? hoverStyles() : "";
@@ -390,12 +392,14 @@ function cropSnapshot(
     out.height = Math.max(1, Math.round(rect.height * scale));
     const ctx = out.getContext("2d");
     if (!ctx) return null;
+    // Round the source rect to whole device pixels so the crop is a 1:1 copy
+    // rather than a fractional resample of the snapshot.
     ctx.drawImage(
       snapshot.canvas,
-      rect.left * scale,
-      rect.top * scale,
-      rect.width * scale,
-      rect.height * scale,
+      Math.round(rect.left * scale),
+      Math.round(rect.top * scale),
+      out.width,
+      out.height,
       0,
       0,
       out.width,
@@ -412,6 +416,19 @@ function cropSnapshot(
 // True from the moment a capture starts until the composer closes, so a second
 // trigger (button or hotkey) can't stack overlays.
 let busy = false;
+
+// Keys that would scroll the live page out from under the frozen snapshot.
+const SCROLL_KEYS = new Set([
+  " ",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+]);
 
 /**
  * Snapshot first, select second. The freeze happens while the page is still
@@ -489,7 +506,12 @@ function selectRegion(
     window.removeEventListener("keydown", onKey);
   };
   const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") cleanup();
+    if (e.key === "Escape") {
+      cleanup();
+      return;
+    }
+    // Space/PageDown/arrows scroll too, and the overlay has focus-free keys.
+    if (SCROLL_KEYS.has(e.key)) e.preventDefault();
   };
   window.addEventListener("keydown", onKey);
   // Scrolling would slide the live page out from under the frozen image.

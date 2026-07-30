@@ -8296,8 +8296,8 @@ ${nested.join("\n")}
     clone.head?.appendChild(style);
   }
   async function freezeViewport() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
+    const width = document.documentElement.clientWidth;
+    const height = document.documentElement.clientHeight;
     const { hovering, unmark } = markHoverChain();
     const css = hovering ? hoverStyles() : "";
     try {
@@ -8330,10 +8330,10 @@ ${nested.join("\n")}
       if (!ctx) return null;
       ctx.drawImage(
         snapshot.canvas,
-        rect.left * scale,
-        rect.top * scale,
-        rect.width * scale,
-        rect.height * scale,
+        Math.round(rect.left * scale),
+        Math.round(rect.top * scale),
+        out.width,
+        out.height,
         0,
         0,
         out.width,
@@ -8345,6 +8345,17 @@ ${nested.join("\n")}
     }
   }
   var busy = false;
+  var SCROLL_KEYS = /* @__PURE__ */ new Set([
+    " ",
+    "PageUp",
+    "PageDown",
+    "Home",
+    "End",
+    "ArrowUp",
+    "ArrowDown",
+    "ArrowLeft",
+    "ArrowRight"
+  ]);
   async function startCapture(hoverAnchored = true) {
     if (busy) return;
     busy = true;
@@ -8402,7 +8413,11 @@ ${nested.join("\n")}
       window.removeEventListener("keydown", onKey);
     };
     const onKey = (e) => {
-      if (e.key === "Escape") cleanup();
+      if (e.key === "Escape") {
+        cleanup();
+        return;
+      }
+      if (SCROLL_KEYS.has(e.key)) e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     const blockScroll = (e) => e.preventDefault();
