@@ -1,7 +1,7 @@
 {
   "name": "web-feedback",
   "description": "Comment on your local web app and feed that feedback into Claude Code over MCP. Bundles the feedback bridge (MCP server + HTTP intake for the in-page widget) and skills to apply feedback and install the widget.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": {
     "name": "Martin Heller"
   },

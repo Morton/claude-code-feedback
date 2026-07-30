@@ -102,7 +102,14 @@ async function serveWidget(res: ServerResponse): Promise<void> {
     if (TOKEN) {
       body = `window.__CLAUDE_FEEDBACK_TOKEN__=${JSON.stringify(TOKEN)};\n${body}`;
     }
-    res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
+    res.writeHead(200, {
+      "Content-Type": "application/javascript; charset=utf-8",
+      // The widget is re-read from disk per request, so the bridge always has the
+      // current build — but without this the browser heuristically caches a 400kb+
+      // script and keeps running the old one across plugin updates. Local dev
+      // server: correctness beats the round-trip.
+      "Cache-Control": "no-store, must-revalidate",
+    });
     res.end(body);
   } catch {
     res.writeHead(404).end("not found");
