@@ -42,8 +42,8 @@ Either way, the tag it adds is just:
 
 ## Use it
 
-Leave a comment on the page (the 💬 button → draw a box → type → Send), then in your
-session run:
+Leave a comment on the page (the button — or <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> —
+→ draw a box → type → Send), then in your session run:
 
 ```
 /web-feedback:feedback

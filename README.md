@@ -51,7 +51,7 @@ Claude finds your app's entry template and adds a dev-only `<script>` tag for th
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
 ```
 
-**4. Leave feedback.** Click the button, draw a box around what's wrong, type a note, and send. It lands in your session immediately and Claude gets to work — reading the screenshot, locating the code, and making the change.
+**4. Leave feedback.** Click the button — or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> — draw a box around what's wrong, type a note, and send. It lands in your session immediately and Claude gets to work — reading the screenshot, locating the code, and making the change.
 
 Keep the session open and comment as you browse. Every note arrives live.
 
@@ -84,6 +84,22 @@ The bridge exposes this through four MCP tools:
 | `get_feedback(id)` | Fetch one item in full; returns the screenshot as an image |
 | `resolve_feedback(id)` | Mark an item handled so it drops off the list |
 | `clear_feedback` | Discard everything |
+
+## Keyboard trigger (and hover states)
+
+Some things only exist while the mouse is on them — a dropdown, a tooltip, a `:hover` style. Reaching for the button kills them before you can mark them up. So the widget also starts from the keyboard:
+
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>
+
+Press it without moving the mouse and the widget **freezes the viewport first** — snapshot, then overlay. You then draw your box on the frozen image, with the menu still open in it, and take as long as you like. `:hover` styling is replayed into the shot too, which browsers otherwise drop from screenshots. <kbd>Esc</kbd> cancels.
+
+Rebind it with a `data-hotkey` attribute, or a global set before the script loads:
+
+```html
+<script src="http://localhost:7878/widget.js" data-hotkey="ctrl+shift+k"></script>
+```
+
+Modifiers are `ctrl`, `alt`/`option`, `shift`, and `meta`/`cmd`; the key is anything like `f`, `1`, or `f2`. Use `none` to turn the shortcut off. To wire your own trigger — a dev-menu item, your app's own shortcut handler — call `window.__CLAUDE_FEEDBACK__.capture()`.
 
 ## Requirements
 

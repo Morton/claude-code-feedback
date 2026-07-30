@@ -11,6 +11,12 @@
       .card { border: 1px solid #e1e1ea; border-radius: 12px; padding: 24px; margin: 16px 0; }
       button { font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid #d4d4dd; background: #f7f7fb; cursor: pointer; }
       h1 { margin: 0; }
+      /* Hover-only UI: unreachable with the mouse once an overlay covers it. */
+      .menu { position: relative; display: inline-block; }
+      .menu:hover button { background: #5b50e8; color: #fff; border-color: #5b50e8; }
+      .menu-items { display: none; position: absolute; left: 0; top: 100%; margin: 4px 0 0; padding: 6px; list-style: none; min-width: 160px; background: #fff; border: 1px solid #e1e1ea; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.14); }
+      .menu:hover .menu-items { display: block; }
+      .menu-items li { padding: 8px 10px; border-radius: 6px; }
     </style>
   </head>
   <body>
@@ -20,6 +26,14 @@
         <h2>Welcome back</h2>
         <p>This heading is a little too close to the paragraph, maybe?</p>
         <button id="primary">Primary action</button>
+      </div>
+      <div class="card">
+        <h2>Hover-only menu</h2>
+        <p>This menu is only in the DOM while the mouse rests on it. Hover it and press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> — the page freezes with the menu open, so you can draw a box around it.</p>
+        <div class="menu">
+          <button>Account ▾</button>
+          <ul class="menu-items"><li>Profile</li><li>Billing</li><li>Sign out</li></ul>
+        </div>
       </div>
       <div class="card">
         <h2>Diagnostics demo</h2>

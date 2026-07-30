@@ -8095,6 +8095,8 @@
   // src/widget/widget.ts
   var import_html2canvas = __toESM(require_html2canvas(), 1);
   var UI_ATTR = "data-feedback-ui";
+  var HOVER_ATTR = "data-feedback-hover";
+  var HOVER_CLASS = "claude-feedback-hover";
   var ACCENT = "#D97757";
   var ACCENT_RGB = "217,119,87";
   var SURFACE = "#FAF9F5";
@@ -8102,15 +8104,78 @@
   function claudeMark(size, color) {
     return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="2.5" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="18.7" y2="18.7"/><line x1="18.7" y1="5.3" x2="5.3" y2="18.7"/></svg>`;
   }
+  var SCRIPT_EL = document.currentScript;
   var BRIDGE_ORIGIN = (() => {
-    const script = document.currentScript;
     try {
-      return script?.src ? new URL(script.src).origin : "http://localhost:7878";
+      return SCRIPT_EL?.src ? new URL(SCRIPT_EL.src).origin : "http://localhost:7878";
     } catch {
       return "http://localhost:7878";
     }
   })();
   var FEEDBACK_TOKEN = window.__CLAUDE_FEEDBACK_TOKEN__;
+  var HOTKEY_SPEC = window.__CLAUDE_FEEDBACK_HOTKEY__ ?? SCRIPT_EL?.dataset.hotkey ?? "alt+shift+f";
+  function parseHotkey(spec) {
+    const parts = spec.toLowerCase().split("+").map((p) => p.trim()).filter(Boolean);
+    const key = parts.pop();
+    if (!key || key === "none" || key === "off") return null;
+    const hotkey = { key, alt: false, ctrl: false, shift: false, meta: false };
+    for (const part of parts) {
+      if (part === "alt" || part === "option" || part === "opt") hotkey.alt = true;
+      else if (part === "ctrl" || part === "control") hotkey.ctrl = true;
+      else if (part === "shift") hotkey.shift = true;
+      else if (part === "meta" || part === "cmd" || part === "command") hotkey.meta = true;
+      else return null;
+    }
+    return hotkey;
+  }
+  var HOTKEY = parseHotkey(HOTKEY_SPEC);
+  function hotkeyLabel(hotkey) {
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+    const parts = [];
+    if (hotkey.ctrl) parts.push(mac ? "\u2303" : "Ctrl");
+    if (hotkey.alt) parts.push(mac ? "\u2325" : "Alt");
+    if (hotkey.shift) parts.push(mac ? "\u21E7" : "Shift");
+    if (hotkey.meta) parts.push(mac ? "\u2318" : "Meta");
+    parts.push(
+      hotkey.key.length === 1 ? hotkey.key.toUpperCase() : hotkey.key.charAt(0).toUpperCase() + hotkey.key.slice(1)
+    );
+    return mac ? parts.join("") : parts.join("+");
+  }
+  function isEditable(node) {
+    if (!(node instanceof HTMLElement)) return false;
+    return node.isContentEditable || node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement || node instanceof HTMLSelectElement;
+  }
+  function matchesHotkey(e, hotkey) {
+    if (e.altKey !== hotkey.alt || e.ctrlKey !== hotkey.ctrl || e.shiftKey !== hotkey.shift || e.metaKey !== hotkey.meta) {
+      return false;
+    }
+    const code = (e.code || "").toLowerCase();
+    return (e.key || "").toLowerCase() === hotkey.key || code === hotkey.key || code === `key${hotkey.key}` || code === `digit${hotkey.key}`;
+  }
+  function installHotkey() {
+    if (!HOTKEY) return;
+    const bare = !HOTKEY.alt && !HOTKEY.ctrl && !HOTKEY.meta;
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.repeat || !matchesHotkey(e, HOTKEY)) return;
+        if (bare && isEditable(e.target)) return;
+        e.preventDefault();
+        void startCapture();
+      },
+      true
+    );
+  }
+  var pointer = null;
+  function trackPointer() {
+    window.addEventListener(
+      "pointermove",
+      (e) => {
+        pointer = { x: e.clientX, y: e.clientY };
+      },
+      { capture: true, passive: true }
+    );
+  }
   function el(tag, styles = {}, text) {
     const node = document.createElement(tag);
     node.setAttribute(UI_ATTR, "true");
@@ -8176,34 +8241,148 @@
     }
     return { selector: selector2, elementTag: node.tagName };
   }
-  async function captureRegion(rect) {
+  function markHoverChain() {
+    let chain = [];
+    try {
+      chain = Array.from(document.querySelectorAll(":hover")).filter((n) => !isOwnUi(n));
+    } catch {
+      chain = [];
+    }
+    for (const node of chain) node.setAttribute(HOVER_ATTR, "true");
+    return {
+      // <html> and <body> are always in the chain; anything deeper is a real hover.
+      hovering: chain.length > 2,
+      unmark: () => {
+        for (const node of chain) node.removeAttribute(HOVER_ATTR);
+      }
+    };
+  }
+  function hoverStyles() {
+    const out = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        collectHoverRules(sheet.cssRules, out);
+      } catch {
+        continue;
+      }
+    }
+    return out.join("\n");
+  }
+  function collectHoverRules(rules, out) {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        if (rule.selectorText.includes(":hover")) {
+          const selector2 = rule.selectorText.replace(/:hover/g, `.${HOVER_CLASS}`);
+          out.push(`${selector2} { ${rule.style.cssText} }`);
+        }
+      } else if (typeof CSSGroupingRule !== "undefined" && rule instanceof CSSGroupingRule) {
+        const nested = [];
+        collectHoverRules(rule.cssRules, nested);
+        if (nested.length) {
+          const prelude = rule.cssText.slice(0, rule.cssText.indexOf("{")).trim();
+          out.push(`${prelude} {
+${nested.join("\n")}
+}`);
+        }
+      }
+    }
+  }
+  function replayHover(clone, css) {
+    const marked = clone.querySelectorAll(`[${HOVER_ATTR}]`);
+    if (!marked.length || !css) return;
+    for (const node of Array.from(marked)) node.classList.add(HOVER_CLASS);
+    const style = clone.createElement("style");
+    style.textContent = css;
+    clone.head?.appendChild(style);
+  }
+  async function freezeViewport() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const { hovering, unmark } = markHoverChain();
+    const css = hovering ? hoverStyles() : "";
     try {
       const canvas = await (0, import_html2canvas.default)(document.body, {
-        x: rect.left + window.scrollX,
-        y: rect.top + window.scrollY,
-        width: rect.width,
-        height: rect.height,
+        x: window.scrollX,
+        y: window.scrollY,
+        width,
+        height,
         scale: window.devicePixelRatio || 1,
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
-        ignoreElements: (node) => isOwnUi(node)
+        ignoreElements: (node) => isOwnUi(node),
+        onclone: (clone) => replayHover(clone, css)
       });
-      return canvas.toDataURL("image/jpeg", 0.7);
+      return { canvas, scale: canvas.width / width, width, height };
+    } catch {
+      return null;
+    } finally {
+      unmark();
+    }
+  }
+  function cropSnapshot(snapshot, rect) {
+    try {
+      const { scale } = snapshot;
+      const out = document.createElement("canvas");
+      out.width = Math.max(1, Math.round(rect.width * scale));
+      out.height = Math.max(1, Math.round(rect.height * scale));
+      const ctx = out.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(
+        snapshot.canvas,
+        rect.left * scale,
+        rect.top * scale,
+        rect.width * scale,
+        rect.height * scale,
+        0,
+        0,
+        out.width,
+        out.height
+      );
+      return out.toDataURL("image/jpeg", 0.7);
     } catch {
       return null;
     }
   }
-  var drawing = false;
-  function startDrawing() {
-    if (drawing) return;
-    drawing = true;
+  var busy = false;
+  async function startCapture(hoverAnchored = true) {
+    if (busy) return;
+    busy = true;
+    const at = hoverAnchored ? pointer : null;
+    const hovered = at ? resolveAnchor(at.x, at.y) : null;
+    const banner = showHint("Capturing the page\u2026");
+    const snapshot = await freezeViewport();
+    banner.remove();
+    if (!snapshot) {
+      busy = false;
+      toast("Couldn't capture the page");
+      return;
+    }
+    selectRegion(snapshot, hovered, at);
+  }
+  function selectRegion(snapshot, hovered, hoveredAt) {
     const overlay = el("div", {
       position: "fixed",
       inset: "0",
       zIndex: "2147483600",
       cursor: "crosshair",
-      background: `rgba(${ACCENT_RGB},0.08)`
+      overflow: "hidden"
+    });
+    const frame = snapshot.canvas;
+    frame.setAttribute(UI_ATTR, "true");
+    Object.assign(frame.style, {
+      position: "absolute",
+      left: "0",
+      top: "0",
+      width: `${snapshot.width}px`,
+      height: `${snapshot.height}px`,
+      pointerEvents: "none"
+    });
+    const wash = el("div", {
+      position: "absolute",
+      inset: "0",
+      background: `rgba(${ACCENT_RGB},0.08)`,
+      pointerEvents: "none"
     });
     const box = el("div", {
       position: "fixed",
@@ -8212,18 +8391,23 @@
       pointerEvents: "none",
       display: "none"
     });
-    overlay.appendChild(box);
+    overlay.append(frame, wash, box);
     document.body.appendChild(overlay);
+    const hint = showHint("Page frozen \u2014 drag to select \xB7 Esc to cancel");
     let start = null;
-    const cleanup = () => {
-      drawing = false;
+    const cleanup = (done = false) => {
+      if (!done) busy = false;
       overlay.remove();
+      hint.remove();
       window.removeEventListener("keydown", onKey);
     };
     const onKey = (e) => {
       if (e.key === "Escape") cleanup();
     };
     window.addEventListener("keydown", onKey);
+    const blockScroll = (e) => e.preventDefault();
+    overlay.addEventListener("wheel", blockScroll, { passive: false });
+    overlay.addEventListener("touchmove", blockScroll, { passive: false });
     overlay.addEventListener("pointerdown", (e) => {
       start = { x: e.clientX, y: e.clientY };
       Object.assign(box.style, {
@@ -8243,7 +8427,7 @@
         height: `${Math.abs(e.clientY - start.y)}px`
       });
     });
-    overlay.addEventListener("pointerup", async (e) => {
+    overlay.addEventListener("pointerup", (e) => {
       if (!start) {
         cleanup();
         return;
@@ -8254,13 +8438,36 @@
         width: Math.abs(e.clientX - start.x),
         height: Math.abs(e.clientY - start.y)
       };
-      cleanup();
-      if (rect.width < MIN_SIZE || rect.height < MIN_SIZE) return;
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const anchor = resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      const screenshotDataUrl = await captureRegion(rect);
-      openComposer(rect, anchor, screenshotDataUrl);
+      const small = rect.width < MIN_SIZE || rect.height < MIN_SIZE;
+      cleanup(!small);
+      if (small) return;
+      const inRect = hoveredAt !== null && hoveredAt.x >= rect.left && hoveredAt.x <= rect.left + rect.width && hoveredAt.y >= rect.top && hoveredAt.y <= rect.top + rect.height;
+      const anchor = inRect && hovered?.selector ? hovered : resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      openComposer(rect, anchor, cropSnapshot(snapshot, rect));
     });
+  }
+  function showHint(text) {
+    const node = el(
+      "div",
+      {
+        position: "fixed",
+        top: "16px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: "2147483603",
+        background: "#1a1a22",
+        color: "#fff",
+        padding: "7px 14px",
+        borderRadius: "999px",
+        font: "13px -apple-system, system-ui, sans-serif",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.25)",
+        pointerEvents: "none"
+        // must never join the `:hover` chain we're capturing
+      },
+      text
+    );
+    document.body.appendChild(node);
+    return node;
   }
   function openComposer(rect, anchor, screenshotDataUrl) {
     const panel = el("div", {
@@ -8315,7 +8522,10 @@
     panel.append(header, textarea, row);
     document.body.appendChild(panel);
     textarea.focus();
-    const close = () => panel.remove();
+    const close = () => {
+      panel.remove();
+      busy = false;
+    };
     cancel.addEventListener("click", close);
     send.addEventListener("click", async () => {
       send.disabled = true;
@@ -8476,8 +8686,8 @@
       }
     );
     fab.innerHTML = claudeMark(26, "#fff");
-    fab.title = "Leave feedback for Claude Code";
-    fab.addEventListener("click", startDrawing);
+    fab.title = HOTKEY ? `Leave feedback for Claude Code (${hotkeyLabel(HOTKEY)})` : "Leave feedback for Claude Code";
+    fab.addEventListener("click", () => void startCapture(false));
     document.body.appendChild(fab);
   }
   function injectStyles() {
@@ -8487,6 +8697,11 @@
   }
   installDiagnostics();
   injectStyles();
+  trackPointer();
+  installHotkey();
+  window.__CLAUDE_FEEDBACK__ = {
+    capture: () => void startCapture()
+  };
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", mountFab);
   } else {

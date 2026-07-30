@@ -34,7 +34,10 @@ If the bridge runs on a non-default port, use that port instead (check
 3. **Leave a marker comment** like `<!-- claude-code-feedback dev widget -->` so the
    tag is easy to find and remove later.
 4. **Tell the user** what you changed, that it's dev-only, and to restart or reload
-   their dev server so the widget loads.
+   their dev server so the widget loads. Mention that feedback starts either from
+   the floating button or with **Alt+Shift+F** — the shortcut freezes the page
+   before the overlay appears, so hover-only UI (menus, tooltips) can be captured.
+   The shortcut is rebindable with `data-hotkey="ctrl+shift+k"` on the script tag.
 
 ## To remove
 

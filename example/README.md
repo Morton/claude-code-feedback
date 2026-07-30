@@ -31,5 +31,7 @@ Code via MCP — start a `claude` session in the repo first. The static server
 auto-injects `<script src="http://localhost:7878/widget.js">` into each page, so
 there's nothing to edit. Override ports with `EXAMPLE_PORT` / `CLAUDE_FEEDBACK_PORT`.
 
-Then open <http://localhost:3000>, click the 💬 button, draw a box over one of
-the issues above, and tell Claude: *"Check my web feedback and apply it."*
+Then open <http://localhost:3000>, click the feedback button (or press
+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, which freezes the page first so
+hover-only UI stays put), draw a box over one of the issues above, and tell
+Claude: *"Check my web feedback and apply it."*
