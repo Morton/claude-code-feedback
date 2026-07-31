@@ -4,7 +4,7 @@
 
 Reviewing a frontend with Claude usually means screenshotting the page, cropping it, pasting it into the chat, and typing out *"the button in the top-right is misaligned."* `claude-code-feedback` turns all of that into a single gesture: draw a box on your running app, type a note, and hit send. Claude gets the screenshot, the exact element you marked, the page URL, and any recent console errors — then fixes it, right in your session.
 
-![The feedback widget open on a local web app: draw a box, type a note, send it to Claude Code.](assets/hero.png)
+![Drawing a box around a low-contrast subtitle on a local web app, leaving a note, and sending it to Claude Code.](assets/demo.gif)
 
 Ever wished you could give Claude feedback on a frontend as easily as leaving a comment? That's the whole idea — review your live app like a design doc, with Claude Code as the reviewer who actually does the work.
 
