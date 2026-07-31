@@ -499,15 +499,19 @@ function selectRegion(
 
   let start: { x: number; y: number } | null = null;
 
-  const cleanup = (done = false) => {
-    if (!done) busy = false;
-    overlay.remove();
+  // Removes the frozen frame/wash/box. Called either when the drag is
+  // abandoned, or later by the composer once it closes — the freeze and the
+  // selection box stay on screen for as long as the composer is open.
+  const closeOverlay = () => overlay.remove();
+  const abort = () => {
+    busy = false;
     hint.remove();
     window.removeEventListener("keydown", onKey);
+    closeOverlay();
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
-      cleanup();
+      abort();
       return;
     }
     // Space/PageDown/arrows scroll too, and the overlay has focus-free keys.
@@ -540,7 +544,7 @@ function selectRegion(
   });
   overlay.addEventListener("pointerup", (e) => {
     if (!start) {
-      cleanup();
+      abort();
       return;
     }
     const rect = {
@@ -550,8 +554,16 @@ function selectRegion(
       height: Math.abs(e.clientY - start.y),
     };
     const small = rect.width < MIN_SIZE || rect.height < MIN_SIZE;
-    cleanup(!small);
-    if (small) return;
+    if (small) {
+      abort();
+      return;
+    }
+
+    // A real selection: stop drag handling but leave the frozen frame and box
+    // on screen, so the marked region stays visible behind the composer.
+    hint.remove();
+    window.removeEventListener("keydown", onKey);
+    overlay.style.cursor = "default";
 
     // Prefer the element that was under the pointer at freeze time when the
     // selection covers it: after the overlay, hover-only UI is no longer there
@@ -566,7 +578,7 @@ function selectRegion(
       inRect && hovered?.selector
         ? hovered
         : resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    openComposer(rect, anchor, cropSnapshot(snapshot, rect));
+    openComposer(rect, anchor, cropSnapshot(snapshot, rect), closeOverlay);
   });
 }
 
@@ -597,7 +609,8 @@ function showHint(text: string): HTMLElement {
 function openComposer(
   rect: { left: number; top: number; width: number; height: number },
   anchor: Anchor,
-  screenshotDataUrl: string | null
+  screenshotDataUrl: string | null,
+  closeOverlay: () => void
 ) {
   const panel = el("div", {
     position: "fixed",
@@ -658,6 +671,7 @@ function openComposer(
   const close = () => {
     panel.remove();
     busy = false;
+    closeOverlay();
   };
   cancel.addEventListener("click", close);
   send.addEventListener("click", async () => {

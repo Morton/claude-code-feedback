@@ -8406,15 +8406,16 @@ ${nested.join("\n")}
     document.body.appendChild(overlay);
     const hint = showHint("Page frozen \u2014 drag to select \xB7 Esc to cancel");
     let start = null;
-    const cleanup = (done = false) => {
-      if (!done) busy = false;
-      overlay.remove();
+    const closeOverlay = () => overlay.remove();
+    const abort = () => {
+      busy = false;
       hint.remove();
       window.removeEventListener("keydown", onKey);
+      closeOverlay();
     };
     const onKey = (e) => {
       if (e.key === "Escape") {
-        cleanup();
+        abort();
         return;
       }
       if (SCROLL_KEYS.has(e.key)) e.preventDefault();
@@ -8444,7 +8445,7 @@ ${nested.join("\n")}
     });
     overlay.addEventListener("pointerup", (e) => {
       if (!start) {
-        cleanup();
+        abort();
         return;
       }
       const rect = {
@@ -8454,11 +8455,16 @@ ${nested.join("\n")}
         height: Math.abs(e.clientY - start.y)
       };
       const small = rect.width < MIN_SIZE || rect.height < MIN_SIZE;
-      cleanup(!small);
-      if (small) return;
+      if (small) {
+        abort();
+        return;
+      }
+      hint.remove();
+      window.removeEventListener("keydown", onKey);
+      overlay.style.cursor = "default";
       const inRect = hoveredAt !== null && hoveredAt.x >= rect.left && hoveredAt.x <= rect.left + rect.width && hoveredAt.y >= rect.top && hoveredAt.y <= rect.top + rect.height;
       const anchor = inRect && hovered?.selector ? hovered : resolveAnchor(rect.left + rect.width / 2, rect.top + rect.height / 2);
-      openComposer(rect, anchor, cropSnapshot(snapshot, rect));
+      openComposer(rect, anchor, cropSnapshot(snapshot, rect), closeOverlay);
     });
   }
   function showHint(text) {
@@ -8484,7 +8490,7 @@ ${nested.join("\n")}
     document.body.appendChild(node);
     return node;
   }
-  function openComposer(rect, anchor, screenshotDataUrl) {
+  function openComposer(rect, anchor, screenshotDataUrl, closeOverlay) {
     const panel = el("div", {
       position: "fixed",
       left: `${Math.min(rect.left, window.innerWidth - 320)}px`,
@@ -8540,6 +8546,7 @@ ${nested.join("\n")}
     const close = () => {
       panel.remove();
       busy = false;
+      closeOverlay();
     };
     cancel.addEventListener("click", close);
     send.addEventListener("click", async () => {
