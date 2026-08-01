@@ -8424,7 +8424,7 @@ ${nested.join("\n")}
     const blockScroll = (e) => e.preventDefault();
     overlay.addEventListener("wheel", blockScroll, { passive: false });
     overlay.addEventListener("touchmove", blockScroll, { passive: false });
-    overlay.addEventListener("pointerdown", (e) => {
+    const onPointerDown = (e) => {
       start = { x: e.clientX, y: e.clientY };
       Object.assign(box.style, {
         display: "block",
@@ -8433,8 +8433,8 @@ ${nested.join("\n")}
         width: "0px",
         height: "0px"
       });
-    });
-    overlay.addEventListener("pointermove", (e) => {
+    };
+    const onPointerMove = (e) => {
       if (!start) return;
       Object.assign(box.style, {
         left: `${Math.min(start.x, e.clientX)}px`,
@@ -8442,12 +8442,16 @@ ${nested.join("\n")}
         width: `${Math.abs(e.clientX - start.x)}px`,
         height: `${Math.abs(e.clientY - start.y)}px`
       });
-    });
+    };
+    overlay.addEventListener("pointerdown", onPointerDown);
+    overlay.addEventListener("pointermove", onPointerMove);
     overlay.addEventListener("pointerup", (e) => {
       if (!start) {
         abort();
         return;
       }
+      overlay.removeEventListener("pointerdown", onPointerDown);
+      overlay.removeEventListener("pointermove", onPointerMove);
       const rect = {
         left: Math.min(start.x, e.clientX),
         top: Math.min(start.y, e.clientY),
