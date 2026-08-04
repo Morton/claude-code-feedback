@@ -680,7 +680,8 @@ function openComposer(
     closeOverlay();
   };
   cancel.addEventListener("click", close);
-  send.addEventListener("click", async () => {
+  const doSend = async () => {
+    if (send.disabled) return;
     send.disabled = true;
     send.textContent = "Sending…";
     const id = await postFeedback({
@@ -699,6 +700,13 @@ function openComposer(
       trackStatus(id, pin);
     }
     toast(id ? "Sent to Claude Code" : "Failed to reach the feedback bridge");
+  };
+  send.addEventListener("click", doSend);
+  textarea.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      void doSend();
+    }
   });
 }
 
