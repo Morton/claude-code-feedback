@@ -14,7 +14,14 @@ import {
   resolveFeedback,
 } from "./store.js";
 
-const PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+const REQUESTED_PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+// The actual bound port — starts as the requested one, updated once listening
+// succeeds (see listenOnAvailablePort). Two sessions in two different projects
+// both default here, so if the first one wins :7878 the second must land
+// somewhere else rather than silently going dark: an un-bound bridge still
+// looks "connected" over MCP while the widget's feedback POSTs go entirely to
+// the other session, which has no way to know they belong to a different app.
+let PORT = REQUESTED_PORT;
 // Bind to loopback only — the intake must never be reachable from the network.
 const HOST = "127.0.0.1";
 // Optional shared secret. When set, POST /feedback must carry it; the widget
@@ -317,28 +324,86 @@ mcp.registerTool(
   async () => ({ content: [{ type: "text", text: `Cleared ${clearFeedback()} item(s)` }] })
 );
 
-async function main() {
-  // A port collision must not take down the MCP connection (Claude Code would
-  // just show the server stuck "connecting" and re-spawn into the same crash).
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      log(
-        `Port ${PORT} is already in use — another claude-feedback bridge is probably ` +
-          `running (e.g. a second Claude Code session in this project). MCP tools stay ` +
-          `available, but this instance will NOT receive widget feedback: the widget ` +
-          `posts to whichever bridge owns the port. Close the other session, or set ` +
-          `CLAUDE_FEEDBACK_PORT to a different port.`
-      );
-    } else {
-      log("HTTP server error:", err);
+mcp.registerTool(
+  "get_bridge_url",
+  {
+    description:
+      "Get the URL THIS bridge is actually listening on right now. Always call this " +
+      "before hardcoding a port in a <script> tag or bookmarklet — if another bridge " +
+      "(e.g. a second Claude Code session in a different project) already held the " +
+      "default port, this one will have landed on a different one.",
+    inputSchema: z.object({}),
+  },
+  async () => ({
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ port: PORT, widgetUrl: `http://${HOST}:${PORT}/widget.js` }, null, 2),
+      },
+    ],
+  })
+);
+
+const MAX_PORT_ATTEMPTS = 20;
+
+// Try REQUESTED_PORT, then REQUESTED_PORT+1, +2, ... A collision must not take
+// down the MCP connection (Claude Code would just show the server stuck
+// "connecting" and re-spawn into the same crash) — but it also must not leave
+// this bridge silently unbound, since an unbound bridge still reports as
+// connected over MCP while receiving zero widget traffic. Landing on the next
+// free port keeps every session's feedback flowing to that session.
+function listenOnAvailablePort(startPort: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    tryPort();
+
+    function tryPort() {
+      const port = startPort + attempt;
+      const onError = (err: NodeJS.ErrnoException) => {
+        httpServer.off("listening", onListening);
+        if (err.code !== "EADDRINUSE") {
+          reject(err);
+          return;
+        }
+        attempt += 1;
+        if (attempt >= MAX_PORT_ATTEMPTS) {
+          reject(
+            new Error(`No free port found in range ${startPort}-${startPort + MAX_PORT_ATTEMPTS - 1}`)
+          );
+          return;
+        }
+        tryPort();
+      };
+      const onListening = () => {
+        httpServer.off("error", onError);
+        resolve(port);
+      };
+      httpServer.once("error", onError);
+      httpServer.once("listening", onListening);
+      httpServer.listen(port, HOST);
     }
   });
-  httpServer.listen(PORT, HOST, () => {
+}
+
+async function main() {
+  PORT = await listenOnAvailablePort(REQUESTED_PORT);
+  // Only attached once bound — errors during the port hunt above are handled
+  // by listenOnAvailablePort's own one-shot listeners instead.
+  httpServer.on("error", (err: NodeJS.ErrnoException) => log("HTTP server error:", err));
+  log(
+    `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` +
+      (TOKEN ? "  [token required]" : "")
+  );
+  if (PORT !== REQUESTED_PORT) {
     log(
-      `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` +
-        (TOKEN ? "  [token required]" : "")
+      `Port ${REQUESTED_PORT} was already in use — probably another claude-feedback ` +
+        `bridge for a different project — so this session landed on ${PORT} instead. ` +
+        `A widget already pointed at ${REQUESTED_PORT} will NOT reach this bridge: ` +
+        `re-run /web-feedback:inject (it looks up the live port via get_bridge_url), or ` +
+        `call get_bridge_url yourself for the exact URL. Set CLAUDE_FEEDBACK_PORT to pin ` +
+        `a specific port instead.`
     );
-  });
+  }
   await mcp.connect(new StdioServerTransport());
   log("MCP server connected on stdio");
 }

@@ -51,6 +51,10 @@ Claude finds your app's entry template and adds a dev-only `<script>` tag for th
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
 ```
 
+That assumes this session's bridge is on the default port. If you're running more
+than one Claude Code session at once, ask this session for its actual port (call
+`get_bridge_url`) and edit the `7878` in the bookmarklet to match.
+
 **4. Leave feedback.** Click the button — or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> — draw a box around what's wrong, type a note, and send. It lands in your session immediately and Claude gets to work — reading the screenshot, locating the code, and making the change.
 
 Keep the session open and comment as you browse. Every note arrives live.
@@ -76,7 +80,7 @@ Every comment carries the context Claude needs to act without guessing:
 - the **page URL**, and
 - recent **console and network errors** from the page.
 
-The bridge exposes this through four MCP tools:
+The bridge exposes this through five MCP tools:
 
 | Tool | Purpose |
 |---|---|
@@ -84,6 +88,7 @@ The bridge exposes this through four MCP tools:
 | `get_feedback(id)` | Fetch one item in full; returns the screenshot as an image |
 | `resolve_feedback(id)` | Mark an item handled so it drops off the list |
 | `clear_feedback` | Discard everything |
+| `get_bridge_url` | The URL *this* bridge is actually listening on — use before hardcoding a port |
 
 ## Keyboard trigger (and hover states)
 
@@ -129,7 +134,7 @@ Add the bridge to your project's `.mcp.json`:
 }
 ```
 
-Claude Code launches it on demand, and it serves the widget on `http://localhost:7878`. Set `CLAUDE_FEEDBACK_PORT` to change the port. This path is machine-specific, so keep your `.mcp.json` local (it's gitignored here).
+Claude Code launches it on demand, and it serves the widget on `http://localhost:7878` — or the next free port if another bridge already holds it (call `get_bridge_url` to confirm). Set `CLAUDE_FEEDBACK_PORT` to pin a specific port instead. This path is machine-specific, so keep your `.mcp.json` local (it's gitignored here).
 
 Inject the widget with the bookmarklet above, or add a dev-only tag to your app:
 
@@ -151,7 +156,7 @@ It loads the widget cross-origin from the bridge, exactly like a real dev site w
 
 ## Good to know
 
-- The feedback queue lives **in memory** in the bridge process. Run one Claude Code session per project on a given port — a second session can't bind `:7878` and won't receive feedback (it stays connected but logs a warning). Use `CLAUDE_FEEDBACK_PORT` to run more than one.
+- The feedback queue lives **in memory** in the bridge process, one per Claude Code session. If you're running more than one session (e.g. two different projects) at once, only the first claims the default port `:7878` — the rest fall back to the next free port automatically, so every session still gets its own working bridge. A widget installed via `/web-feedback:inject` always looks up the live port for you (`get_bridge_url`); if you hardcoded a `<script>` tag or bookmarklet yourself, call `get_bridge_url` in the session it should reach and update the port there.
 - Start the bridge (by launching Claude Code) **before** the widget loads, or `widget.js` returns a 404.
 
 ## Security

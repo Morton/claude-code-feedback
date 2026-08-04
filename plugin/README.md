@@ -14,7 +14,9 @@ install is fully self-contained.
 
 This registers the `web-feedback` MCP server (bridge) and a `/web-feedback:feedback`
 skill. The bridge opens `http://localhost:7878` to host the widget and receive
-feedback. (Override the port with `CLAUDE_FEEDBACK_PORT`.)
+feedback — or the next free port if another bridge (e.g. a second session in a
+different project) already holds it; call the `get_bridge_url` tool to confirm the
+actual port. (Pin a specific port with `CLAUDE_FEEDBACK_PORT`.)
 
 ## Inject the widget
 
@@ -25,8 +27,9 @@ wire it in — run the bundled skill:
 /web-feedback:inject
 ```
 
-Claude locates your app's entry template and adds a dev-only `<script>` tag (and
-removes it on request). If you'd rather not touch your source, use the
+Claude looks up this session's actual bridge URL (`get_bridge_url`) before wiring
+anything in, then locates your app's entry template and adds a dev-only `<script>`
+tag (and removes it on request). If you'd rather not touch your source, use the
 **bookmarklet** instead — drag it to your bookmarks bar once, then click it on any
 `localhost` page:
 
@@ -34,11 +37,16 @@ removes it on request). If you'd rather not touch your source, use the
 javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:7878/widget.js';document.body.appendChild(s);})()
 ```
 
-Either way, the tag it adds is just:
+The tag it adds normally looks like this:
 
 ```html
 <script src="http://localhost:7878/widget.js"></script>
 ```
+
+`7878` is only the default port — if you're running more than one Claude Code
+session at once, the bookmarklet (or a tag you write by hand) needs the real port
+for *that* session's bridge. Ask the session for it (`get_bridge_url`) rather than
+assuming `7878`.
 
 ## Use it
 

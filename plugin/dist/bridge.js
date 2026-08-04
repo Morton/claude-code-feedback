@@ -21157,7 +21157,8 @@ function clearFeedback() {
 }
 
 // src/bridge.ts
-var PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+var REQUESTED_PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+var PORT = REQUESTED_PORT;
 var HOST = "127.0.0.1";
 var TOKEN = process.env.CLAUDE_FEEDBACK_TOKEN || null;
 var log = (...args) => console.error("[claude-feedback]", ...args);
@@ -21392,21 +21393,64 @@ mcp.registerTool(
   { description: "Discard all collected feedback.", inputSchema: external_exports.object({}) },
   async () => ({ content: [{ type: "text", text: `Cleared ${clearFeedback()} item(s)` }] })
 );
-async function main() {
-  httpServer.on("error", (err) => {
-    if (err.code === "EADDRINUSE") {
-      log(
-        `Port ${PORT} is already in use \u2014 another claude-feedback bridge is probably running (e.g. a second Claude Code session in this project). MCP tools stay available, but this instance will NOT receive widget feedback: the widget posts to whichever bridge owns the port. Close the other session, or set CLAUDE_FEEDBACK_PORT to a different port.`
-      );
-    } else {
-      log("HTTP server error:", err);
+mcp.registerTool(
+  "get_bridge_url",
+  {
+    description: "Get the URL THIS bridge is actually listening on right now. Always call this before hardcoding a port in a <script> tag or bookmarklet \u2014 if another bridge (e.g. a second Claude Code session in a different project) already held the default port, this one will have landed on a different one.",
+    inputSchema: external_exports.object({})
+  },
+  async () => ({
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({ port: PORT, widgetUrl: `http://${HOST}:${PORT}/widget.js` }, null, 2)
+      }
+    ]
+  })
+);
+var MAX_PORT_ATTEMPTS = 20;
+function listenOnAvailablePort(startPort) {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    tryPort();
+    function tryPort() {
+      const port = startPort + attempt;
+      const onError = (err) => {
+        httpServer.off("listening", onListening);
+        if (err.code !== "EADDRINUSE") {
+          reject(err);
+          return;
+        }
+        attempt += 1;
+        if (attempt >= MAX_PORT_ATTEMPTS) {
+          reject(
+            new Error(`No free port found in range ${startPort}-${startPort + MAX_PORT_ATTEMPTS - 1}`)
+          );
+          return;
+        }
+        tryPort();
+      };
+      const onListening = () => {
+        httpServer.off("error", onError);
+        resolve(port);
+      };
+      httpServer.once("error", onError);
+      httpServer.once("listening", onListening);
+      httpServer.listen(port, HOST);
     }
   });
-  httpServer.listen(PORT, HOST, () => {
+}
+async function main() {
+  PORT = await listenOnAvailablePort(REQUESTED_PORT);
+  httpServer.on("error", (err) => log("HTTP server error:", err));
+  log(
+    `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` + (TOKEN ? "  [token required]" : "")
+  );
+  if (PORT !== REQUESTED_PORT) {
     log(
-      `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` + (TOKEN ? "  [token required]" : "")
+      `Port ${REQUESTED_PORT} was already in use \u2014 probably another claude-feedback bridge for a different project \u2014 so this session landed on ${PORT} instead. A widget already pointed at ${REQUESTED_PORT} will NOT reach this bridge: re-run /web-feedback:inject (it looks up the live port via get_bridge_url), or call get_bridge_url yourself for the exact URL. Set CLAUDE_FEEDBACK_PORT to pin a specific port instead.`
     );
-  });
+  }
   await mcp.connect(new StdioServerTransport());
   log("MCP server connected on stdio");
 }
