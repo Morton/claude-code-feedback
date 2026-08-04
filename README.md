@@ -156,7 +156,7 @@ It loads the widget cross-origin from the bridge, exactly like a real dev site w
 
 ## Good to know
 
-- The feedback queue lives **in memory** in the bridge process, one per Claude Code session. If you're running more than one session (e.g. two different projects) at once, only the first claims the default port `:7878` — the rest fall back to the next free port automatically, so every session still gets its own working bridge. A widget installed via `/web-feedback:inject` always looks up the live port for you (`get_bridge_url`); if you hardcoded a `<script>` tag or bookmarklet yourself, call `get_bridge_url` in the session it should reach and update the port there.
+- The feedback queue lives **in memory** in the bridge process, one per Claude Code session. If you're running more than one session (e.g. two different projects) at once, only the first claims the default port `:7878` — the rest fall back to the next free port automatically, so every session still gets its own working bridge. Each project then remembers the port it landed on and reclaims it on the next restart, so an already-injected `<script>` tag keeps working. A widget installed via `/web-feedback:inject` always looks up the live port for you (`get_bridge_url`); if you hardcoded a `<script>` tag or bookmarklet yourself, call `get_bridge_url` in the session it should reach and update the port there.
 - Start the bridge (by launching Claude Code) **before** the widget loads, or `widget.js` returns a 404.
 
 ## Security

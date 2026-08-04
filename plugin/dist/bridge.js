@@ -6886,8 +6886,10 @@ var require_dist = __commonJS({
 });
 
 // src/bridge.ts
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
@@ -21157,7 +21159,36 @@ function clearFeedback() {
 }
 
 // src/bridge.ts
-var REQUESTED_PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+var PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+var PORT_REGISTRY_PATH = process.env.CLAUDE_PLUGIN_DATA ? join(process.env.CLAUDE_PLUGIN_DATA, "port-registry.json") : null;
+function readRememberedPort() {
+  if (!PORT_REGISTRY_PATH) return null;
+  try {
+    const registry2 = JSON.parse(readFileSync(PORT_REGISTRY_PATH, "utf8"));
+    const port = registry2[PROJECT_DIR];
+    return typeof port === "number" ? port : null;
+  } catch {
+    return null;
+  }
+}
+function rememberPort(port) {
+  if (!PORT_REGISTRY_PATH || !process.env.CLAUDE_PLUGIN_DATA) return;
+  try {
+    mkdirSync(process.env.CLAUDE_PLUGIN_DATA, { recursive: true });
+    let registry2 = {};
+    try {
+      registry2 = JSON.parse(readFileSync(PORT_REGISTRY_PATH, "utf8"));
+    } catch {
+    }
+    registry2[PROJECT_DIR] = port;
+    const tmpPath = `${PORT_REGISTRY_PATH}.${process.pid}.tmp`;
+    writeFileSync(tmpPath, JSON.stringify(registry2, null, 2));
+    renameSync(tmpPath, PORT_REGISTRY_PATH);
+  } catch (error2) {
+    log("could not persist bridge port:", error2);
+  }
+}
+var REQUESTED_PORT = process.env.CLAUDE_FEEDBACK_PORT ? Number(process.env.CLAUDE_FEEDBACK_PORT) : readRememberedPort() ?? 7878;
 var PORT = REQUESTED_PORT;
 var HOST = "127.0.0.1";
 var TOKEN = process.env.CLAUDE_FEEDBACK_TOKEN || null;
@@ -21443,12 +21474,13 @@ function listenOnAvailablePort(startPort) {
 async function main() {
   PORT = await listenOnAvailablePort(REQUESTED_PORT);
   httpServer.on("error", (err) => log("HTTP server error:", err));
+  rememberPort(PORT);
   log(
     `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` + (TOKEN ? "  [token required]" : "")
   );
   if (PORT !== REQUESTED_PORT) {
     log(
-      `Port ${REQUESTED_PORT} was already in use \u2014 probably another claude-feedback bridge for a different project \u2014 so this session landed on ${PORT} instead. A widget already pointed at ${REQUESTED_PORT} will NOT reach this bridge: re-run /web-feedback:inject (it looks up the live port via get_bridge_url), or call get_bridge_url yourself for the exact URL. Set CLAUDE_FEEDBACK_PORT to pin a specific port instead.`
+      `Port ${REQUESTED_PORT} was already in use \u2014 probably another claude-feedback bridge (another project, or a stale process of this one) \u2014 so this session landed on ${PORT} instead. A widget already pointed at ${REQUESTED_PORT} will NOT reach this bridge: re-run /web-feedback:inject (it looks up the live port via get_bridge_url), or call get_bridge_url yourself for the exact URL. Set CLAUDE_FEEDBACK_PORT to pin a specific port instead.`
     );
   }
   await mcp.connect(new StdioServerTransport());

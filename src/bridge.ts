@@ -1,5 +1,7 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -14,7 +16,64 @@ import {
   resolveFeedback,
 } from "./store.js";
 
-const REQUESTED_PORT = Number(process.env.CLAUDE_FEEDBACK_PORT ?? 7878);
+// Identifies this project across restarts, for the port memory below.
+// Falls back to cwd when not running as an installed plugin (e.g. from source).
+const PROJECT_DIR = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+
+// ${CLAUDE_PLUGIN_DATA} is a per-plugin directory that survives restarts and
+// version bumps — Claude Code creates it on first reference and exports it to
+// this process automatically. Only set when running as an installed plugin;
+// `run it from source` (see README) has no plugin identity, so port memory
+// is simply skipped there.
+const PORT_REGISTRY_PATH = process.env.CLAUDE_PLUGIN_DATA
+  ? join(process.env.CLAUDE_PLUGIN_DATA, "port-registry.json")
+  : null;
+
+// The <script> tag /web-feedback:inject writes is static HTML fixed at
+// inject-time. If a later restart falls back to a different port than last
+// time (another session running, or something else briefly held the default),
+// that tag silently goes stale again. Remembering the port this project last
+// bound successfully — and trying it first — keeps restarts landing in the
+// same place, so an already-injected tag usually keeps working without
+// needing a fresh get_bridge_url lookup. Best-effort only: any failure here
+// just falls back to the plain default, never blocks startup.
+function readRememberedPort(): number | null {
+  if (!PORT_REGISTRY_PATH) return null;
+  try {
+    const registry = JSON.parse(readFileSync(PORT_REGISTRY_PATH, "utf8"));
+    const port = registry[PROJECT_DIR];
+    return typeof port === "number" ? port : null;
+  } catch {
+    return null;
+  }
+}
+
+function rememberPort(port: number): void {
+  if (!PORT_REGISTRY_PATH || !process.env.CLAUDE_PLUGIN_DATA) return;
+  try {
+    mkdirSync(process.env.CLAUDE_PLUGIN_DATA, { recursive: true });
+    let registry: Record<string, number> = {};
+    try {
+      registry = JSON.parse(readFileSync(PORT_REGISTRY_PATH, "utf8"));
+    } catch {
+      // Missing or corrupt — start a fresh registry.
+    }
+    registry[PROJECT_DIR] = port;
+    // Write-then-rename so a concurrent bridge (a different project) writing
+    // the same shared file at the same moment can't corrupt it mid-write —
+    // worst case is one of the two updates gets overwritten, which just means
+    // that project's next restart falls back to the plain default.
+    const tmpPath = `${PORT_REGISTRY_PATH}.${process.pid}.tmp`;
+    writeFileSync(tmpPath, JSON.stringify(registry, null, 2));
+    renameSync(tmpPath, PORT_REGISTRY_PATH);
+  } catch (error) {
+    log("could not persist bridge port:", error);
+  }
+}
+
+const REQUESTED_PORT = process.env.CLAUDE_FEEDBACK_PORT
+  ? Number(process.env.CLAUDE_FEEDBACK_PORT)
+  : (readRememberedPort() ?? 7878);
 // The actual bound port — starts as the requested one, updated once listening
 // succeeds (see listenOnAvailablePort). Two sessions in two different projects
 // both default here, so if the first one wins :7878 the second must land
@@ -390,6 +449,7 @@ async function main() {
   // Only attached once bound — errors during the port hunt above are handled
   // by listenOnAvailablePort's own one-shot listeners instead.
   httpServer.on("error", (err: NodeJS.ErrnoException) => log("HTTP server error:", err));
+  rememberPort(PORT);
   log(
     `HTTP intake on http://${HOST}:${PORT}  (widget.js, /feedback, demo.html)` +
       (TOKEN ? "  [token required]" : "")
@@ -397,11 +457,11 @@ async function main() {
   if (PORT !== REQUESTED_PORT) {
     log(
       `Port ${REQUESTED_PORT} was already in use — probably another claude-feedback ` +
-        `bridge for a different project — so this session landed on ${PORT} instead. ` +
-        `A widget already pointed at ${REQUESTED_PORT} will NOT reach this bridge: ` +
-        `re-run /web-feedback:inject (it looks up the live port via get_bridge_url), or ` +
-        `call get_bridge_url yourself for the exact URL. Set CLAUDE_FEEDBACK_PORT to pin ` +
-        `a specific port instead.`
+        `bridge (another project, or a stale process of this one) — so this session ` +
+        `landed on ${PORT} instead. A widget already pointed at ${REQUESTED_PORT} will ` +
+        `NOT reach this bridge: re-run /web-feedback:inject (it looks up the live port ` +
+        `via get_bridge_url), or call get_bridge_url yourself for the exact URL. Set ` +
+        `CLAUDE_FEEDBACK_PORT to pin a specific port instead.`
     );
   }
   await mcp.connect(new StdioServerTransport());
